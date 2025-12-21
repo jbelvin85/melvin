@@ -21,8 +21,8 @@ Prereqs: Docker + Docker Compose plugin, Node.js/npm, curl.
 
 ```bash
 ./scripts/melvin.sh launch
-# -> prompts for admin credentials, generates secrets, builds frontend,
-#    starts the stack, and prints http://localhost:8001 (API) with Postgres on host port 8004
+# -> prompts for dataset locations (if not already under data/raw/), admin credentials,
+#    generates secrets, builds frontend, starts Docker services, and prints http://localhost:8001.
 ```
 
 Use the printed URL to submit a user request, log in as the admin to approve users, and begin chatting with Melvin.

@@ -3,10 +3,12 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 DATA_DIR="$REPO_ROOT/data"
+RAW_DATA_DIR="$DATA_DIR/raw"
 PROCESSED_DIR="$DATA_DIR/processed"
 ENV_FILE="$REPO_ROOT/.env"
 FRONTEND_DIR="$REPO_ROOT/frontend"
 FRONTEND_DIST="$FRONTEND_DIR/dist"
+REQUIRED_DATA_FILES=("MagicCompRules 20251114.txt" "oracle-cards-20251221100301.json" "rulings-20251221100031.json")
 
 ensure_env() {
   if [[ ! -f "$ENV_FILE" ]]; then
@@ -17,6 +19,7 @@ ensure_env() {
 
 ensure_dirs() {
   mkdir -p "$PROCESSED_DIR"
+  mkdir -p "$RAW_DATA_DIR"
   mkdir -p "$REPO_ROOT/backups"
 }
 
@@ -129,6 +132,31 @@ configure_env() {
   echo "[melvin] .env ready."
 }
 
+ensure_data_files() {
+  ensure_dirs
+  for filename in "${REQUIRED_DATA_FILES[@]}"; do
+    local target="$RAW_DATA_DIR/$filename"
+    if [[ -f "$target" ]]; then
+      continue
+    fi
+    echo "[melvin] Missing data file: $target"
+    while [[ ! -f "$target" ]]; do
+      read -r -p "Enter path to '${filename}': " source_path
+      if [[ -z "$source_path" ]]; then
+        echo "Path is required to proceed."
+        continue
+      fi
+      if [[ ! -f "$source_path" ]]; then
+        echo "File not found at '$source_path'."
+        continue
+      fi
+      mkdir -p "$(dirname "$target")"
+      cp "$source_path" "$target"
+      echo "[melvin] Copied '$filename' into data/raw."
+    done
+  done
+}
+
 ensure_frontend_dependencies() {
   if [[ -f "$FRONTEND_DIR/package.json" ]]; then
     (cd "$FRONTEND_DIR" && npm install)
@@ -160,6 +188,7 @@ cmd_launch() {
   require_cmd curl
   configure_env
   ensure_dirs
+  ensure_data_files
   build_frontend
   docker compose up --build -d
   if wait_for_api; then

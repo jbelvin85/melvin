@@ -25,7 +25,7 @@ We will author a single entrypoint script (working name: `scripts/melvin.sh`) th
 
 ## Current Implementation Status
 - `scripts/melvin.sh` now orchestrates the entire lifecycle:
-  - `launch` (default): prompts for admin credentials, generates the JWT secret, builds the React frontend, brings up Docker services, waits for the API health check, and prints the access URL plus admin username.
+  - `launch` (default): verifies raw dataset files (prompts for their local paths if missing), prompts for admin credentials, generates the JWT secret, builds the React frontend, brings up Docker services, waits for the API health check, and prints the access URL plus admin username.
   - `dev`: rebuilds the frontend and runs `docker compose up` in the foreground (for local debugging).
   - `down`: stops the compose stack.
   - `logs [service]`: tails logs.
