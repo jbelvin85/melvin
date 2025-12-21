@@ -20,6 +20,14 @@ ensure_dirs() {
   mkdir -p "$REPO_ROOT/backups"
 }
 
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "[melvin] Required command '$cmd' not found. Please install it."
+    exit 1
+  fi
+}
+
 set_env_var() {
   local key="$1"
   local value="$2"
@@ -116,7 +124,7 @@ configure_env() {
   else
     export INITIAL_ADMIN_USERNAME_VALUE="$current_admin"
     export INITIAL_ADMIN_PASSWORD_VALUE="$(get_env_var "INITIAL_ADMIN_PASSWORD")"
-  }
+  fi
   set_env_var "FRONTEND_DIST" "/app/frontend/dist"
   echo "[melvin] .env ready."
 }
@@ -216,10 +224,3 @@ case "$command" in
   backup) cmd_backup ;;
   *) usage; exit 1 ;;
 esac
-require_cmd() {
-  local cmd="$1"
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "[melvin] Required command '$cmd' not found. Please install it."
-    exit 1
-  fi
-}
