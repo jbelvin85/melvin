@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    volumes:
+      - ./backend/app:/app/app
+      - ./data:/data
+      - ./frontend/dist:/app/frontend/dist
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - mongo
+      - ollama
+    environment:
+      RAW_DATA_DIR: /data/raw
+      PROCESSED_DATA_DIR: /data/processed
+      FRONTEND_DIST: /app/frontend/dist
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: melvin
+      POSTGRES_USER: melvin
+      POSTGRES_PASSWORD: melvin
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  mongo:
+    image: mongo:6
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+
+volumes:
+  postgres_data:
+  mongo_data:
+  ollama_data:
