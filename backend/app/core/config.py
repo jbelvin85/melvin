@@ -42,14 +42,10 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @staticmethod
-    def _identity(value):
-        return value
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        json_loads=lambda value: value,
+        case_sensitive=False,
     )
 
 
