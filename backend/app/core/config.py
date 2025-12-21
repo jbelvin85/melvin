@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List
 
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -28,10 +29,18 @@ class Settings(BaseSettings):
     ollama_port: int = 11434
     ollama_model: str = "llama2"
 
-    allowed_origins: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
-    initial_admin_username: str = "admin"
+    allowed_origins: List[str] = Field(
+        default_factory=lambda: ["http://localhost:8001", "http://127.0.0.1:8001"]
+    )
     initial_admin_username: str = "admin"
     initial_admin_password: str = "ChangeMe!123"
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_origins(cls, value):
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
     class Config:
         env_file = ".env"
