@@ -31,7 +31,7 @@ require_cmd() {
 set_env_var() {
   local key="$1"
   local value="$2"
-  python3 <<PY
+  python3 "$key" "$value" <<'PY'
 import os
 import sys
 
