@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -42,9 +42,15 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    @staticmethod
+    def _identity(value):
+        return value
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        json_loads=lambda value: value,
+    )
 
 
 @lru_cache(maxsize=1)
