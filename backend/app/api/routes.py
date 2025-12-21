@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import auth, conversations
+from . import auth, banned_cards, conversations
 
 
 router = APIRouter()
@@ -12,6 +12,7 @@ def healthcheck() -> dict:
 
 
 router.include_router(auth.router)
+router.include_router(banned_cards.router)
 router.include_router(conversations.router)
 
 

@@ -6,11 +6,13 @@ from ..core.config import get_settings
 from ..core.database import Base, SessionLocal, engine
 from ..core.security import hash_password
 from ..models.user import User
+from .banned_cards import banned_cards_service
 
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_admin_exists()
+    load_banned_cards()
 
 
 def ensure_admin_exists() -> None:
@@ -27,5 +29,18 @@ def ensure_admin_exists() -> None:
         )
         db.add(admin_user)
         db.commit()
+    finally:
+        db.close()
+
+
+def load_banned_cards() -> None:
+    """Load banned cards data from JSON file into database."""
+    db: Session = SessionLocal()
+    try:
+        count = banned_cards_service.load_from_json(db)
+        if count > 0:
+            print(f"Loaded {count} banned cards into database")
+    except Exception as e:
+        print(f"Error loading banned cards: {e}")
     finally:
         db.close()
