@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from .api.routes import router as api_router
 from .core.config import get_settings
 from .services.bootstrap import init_db
+from .services.ingest import ingest_service
 
 
 settings = get_settings()
@@ -29,6 +30,12 @@ async def startup_event() -> None:
     from .services.melvin import melvin_service  # noqa: F401
 
     _ = melvin_service
+
+
+@app.post("/ingest", tags=["system"])
+def ingest_data() -> dict:
+    ingest_service.ingest()
+    return {"status": "ok"}
 
 
 app.include_router(api_router, prefix=settings.api_prefix)
@@ -54,3 +61,4 @@ async def spa_fallback(full_path: str):
         if index_path.exists():
             return FileResponse(index_path)
     return JSONResponse({"message": "Frontend not built."})
+

@@ -71,24 +71,7 @@ async def chat_with_melvin(
     if not record or record.user_id != user.id:
         raise HTTPException(status_code=404, detail="Conversation not found")
     await append_message(conversation_id, "user", payload.question)
-    hits = melvin_service.answer_question(payload.question)
-    response_text = format_response(hits)
+    response_text = melvin_service.answer_question(payload.question)
     await append_message(conversation_id, "melvin", response_text)
     return Message(sender="melvin", content=response_text, created_at=datetime.utcnow())
 
-
-def format_response(hits: dict) -> str:
-    output = []
-    if hits.get("rules"):
-        output.append("Rules:")
-        for rule in hits["rules"]:
-            output.append(f"- {rule.get('identifier')}: {rule.get('text')}")
-    if hits.get("cards"):
-        output.append("Cards:")
-        for card in hits["cards"]:
-            output.append(f"- {card.get('name')}: {card.get('oracle_text')}")
-    if hits.get("rulings"):
-        output.append("Rulings:")
-        for ruling in hits["rulings"]:
-            output.append(f"- {ruling.get('comment')}")
-    return "\n".join(output[:100]) or "No relevant information found."
