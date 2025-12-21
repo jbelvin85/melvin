@@ -23,6 +23,23 @@ ensure_dirs() {
   mkdir -p "$REPO_ROOT/backups"
 }
 
+find_existing_data_file() {
+  local filename="$1"
+  local candidates=(
+    "$RAW_DATA_DIR/$filename"
+    "/data/raw/$filename"
+    "$HOME/data/raw/$filename"
+    "$REPO_ROOT/$filename"
+  )
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 require_cmd() {
   local cmd="$1"
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -137,6 +154,14 @@ ensure_data_files() {
   for filename in "${REQUIRED_DATA_FILES[@]}"; do
     local target="$RAW_DATA_DIR/$filename"
     if [[ -f "$target" ]]; then
+      continue
+    fi
+    local auto_source
+    auto_source="$(find_existing_data_file "$filename" || true)"
+    if [[ -n "$auto_source" && "$auto_source" != "$target" ]]; then
+      mkdir -p "$(dirname "$target")"
+      cp "$auto_source" "$target"
+      echo "[melvin] Copied '$filename' from '$auto_source' to '$target'."
       continue
     fi
     echo "[melvin] Missing data file: $target"
