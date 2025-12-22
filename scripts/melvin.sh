@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}" )/.. && pwd)"
 DATA_DIR="$REPO_ROOT/data"
 RAW_DATA_DIR="$DATA_DIR/raw"
 PROCESSED_DIR="$DATA_DIR/processed"
 ENV_FILE="$REPO_ROOT/.env"
 FRONTEND_DIR="$REPO_ROOT/frontend"
+API_URL="http://localhost:8001"
 REQUIRED_DATA_FILES=(
   "MagicCompRules 20251114.txt"
   "oracle-cards-20251221100301.json"
@@ -27,7 +28,7 @@ ensure_dirs() {
 require_cmd() {
   local cmd="$1"
   if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "[melvin] Required command '$cmd' not found. Please install it."
+    echo "[melvin] Required command '$cmd' not found. Aborting."
     exit 1
   fi
 }
@@ -65,9 +66,9 @@ get_env_var() {
   local key="$1"
   python3 <<PY
 import os
-env = os.environ["ENV_FILE_PATH"]
+env = os.environ.get("ENV_FILE_PATH")
 key = "$1"
-if os.path.exists(env):
+if env and os.path.exists(env):
     with open(env, "r", encoding="utf-8") as handle:
         for line in handle:
             if line.startswith(f"{key}="):
@@ -96,7 +97,7 @@ prompt_credentials() {
     read -r -s -p "Confirm admin password: " admin_confirm
     echo
     if [[ "$admin_pass" != "$admin_confirm" ]]; then
-      echo "Passwords do not match. Try again."
+      echo "Passwords do not match."
       continue
     fi
     if [[ ${#admin_pass} -lt 8 ]]; then
@@ -112,19 +113,19 @@ prompt_credentials() {
 configure_env() {
   ensure_env
   export ENV_FILE_PATH="$ENV_FILE"
-  local secret
-  secret="$(get_env_var "SECRET_KEY" || true)"
-  if [[ -z "$secret" ]]; then
+  local current_secret
+  current_secret="$(get_env_var "SECRET_KEY" || true)"
+  if [[ -z "$current_secret" ]]; then
     set_env_var "SECRET_KEY" "$(read_secret)"
   fi
-  local admin_username
-  admin_username="$(get_env_var "INITIAL_ADMIN_USERNAME" || true)"
-  if [[ -z "$admin_username" ]]; then
+  local current_admin
+  current_admin="$(get_env_var "INITIAL_ADMIN_USERNAME" || true)"
+  if [[ -z "$current_admin" ]]; then
     prompt_credentials
     set_env_var "INITIAL_ADMIN_USERNAME" "$INITIAL_ADMIN_USERNAME_VALUE"
     set_env_var "INITIAL_ADMIN_PASSWORD" "$INITIAL_ADMIN_PASSWORD_VALUE"
   else
-    export INITIAL_ADMIN_USERNAME_VALUE="$admin_username"
+    export INITIAL_ADMIN_USERNAME_VALUE="$current_admin"
     export INITIAL_ADMIN_PASSWORD_VALUE="$(get_env_var "INITIAL_ADMIN_PASSWORD")"
   fi
   set_env_var "FRONTEND_DIST" "/app/frontend/dist"
@@ -173,26 +174,26 @@ try:
     with urllib.request.urlopen("https://api.scryfall.com/bulk-data", timeout=60) as resp:
         metadata = json.load(resp)
 except urllib.error.URLError as exc:
-    print(f"[melvin] Failed to reach Scryfall bulk endpoint: {exc}", file=sys.stderr)
+    print(f"[melvin] Failed to reach Scryfall: {exc}", file=sys.stderr)
     sys.exit(1)
 
 entries = metadata.get("data", [])
-match = next((item for item in entries if item.get("type") == bulk_type), None)
+match = next((entry for entry in entries if entry.get("type") == bulk_type), None)
 if match is None:
-    print(f"[melvin] Bulk data type '{bulk_type}' not found.", file=sys.stderr)
+    print(f"[melvin] Bulk type '{bulk_type}' not found.", file=sys.stderr)
     sys.exit(1)
 
-url = match.get("download_uri")
-if not url:
-    print(f"[melvin] Download URI missing for '{bulk_type}'.", file=sys.stderr)
+download_uri = match.get("download_uri")
+if not download_uri:
+    print(f"[melvin] No download URI for '{bulk_type}'.", file=sys.stderr)
     sys.exit(1)
 
-print(f"[melvin] Downloading '{bulk_type}' from {url}")
+print(f"[melvin] Downloading '{bulk_type}' from {download_uri}")
 try:
-    with urllib.request.urlopen(url, timeout=600) as resp, open(destination, "wb") as handle:
+    with urllib.request.urlopen(download_uri, timeout=600) as resp, open(destination, "wb") as handle:
         handle.write(resp.read())
 except urllib.error.URLError as exc:
-    print(f"[melvin] Failed to download '{bulk_type}': {exc}", file=sys.stderr)
+    print(f"[melvin] Download failed: {exc}", file=sys.stderr)
     sys.exit(1)
 
 print(f"[melvin] Saved '{bulk_type}' to {destination}")
@@ -216,14 +217,16 @@ ensure_data_files() {
     local bulk_type
     bulk_type="$(bulk_type_for_filename "$filename")"
     if [[ -n "$bulk_type" ]]; then
-      echo "[melvin] Attempting automatic download for '$filename'."
+      echo "[melvin] Attempting automatic download of '$filename'."
       if download_scryfall_bulk "$bulk_type" "$target"; then
         continue
+      else
+        echo "[melvin] Automatic download failed for '$filename'."
       fi
     fi
-    echo "[melvin] Please provide path to '$filename'."
+    echo "[melvin] Please provide a path to '$filename'."
     while [[ ! -f "$target" ]]; do
-      read -r -p "File path: " source_path
+      read -r -p "Path: " source_path
       if [[ -z "$source_path" ]]; then
         echo "Path is required."
         continue
@@ -255,7 +258,7 @@ wait_for_api() {
   local retries=20
   local delay=3
   for ((i=1; i<=retries; i++)); do
-    if curl -fsS http://localhost:8001/api/health >/dev/null 2>&1; then
+    if curl -fsS "$API_URL/api/health" >/dev/null 2>&1; then
       return 0
     fi
     sleep "$delay"
@@ -267,19 +270,73 @@ create_admin_account() {
   local username="$1"
   local password="$2"
   local payload="{\"username\": \"$username\", \"password\": \"$password\"}"
-  echo "[melvin] Ensuring admin account exists..."
   curl -fsS -X POST \
     -H "Content-Type: application/json" \
     -d "$payload" \
-    http://localhost:8001/api/auth/bootstrap || true
+    "$API_URL/api/auth/bootstrap" >/dev/null 2>&1 || true
 }
 
-cmd_launch() {
-  require_cmd docker
-  require_cmd npm
-  require_cmd node
-  require_cmd python3
+confirm() {
+  local prompt="$1"
+  local response
+  read -r -p "$prompt (y/n): " response
+  [[ "$response" =~ ^[yY]$ ]]
+}
+
+check_and_install_docker() {
+  if command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[melvin] Docker missing. Attempting installation..."
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin
+  elif command -v brew >/dev/null 2>&1; then
+    brew install docker docker-compose
+  else
+    echo "[melvin] Please install Docker manually."
+    exit 1
+  fi
+}
+
+check_and_install_nodejs() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[melvin] Node.js/npm missing. Attempting installation..."
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update && sudo apt-get install -y nodejs npm
+  elif command -v brew >/dev/null 2>&1; then
+    brew install node
+  else
+    echo "[melvin] Please install Node.js + npm manually."
+    exit 1
+  fi
+}
+
+check_and_install_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[melvin] Python 3 missing. Attempting installation..."
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update && sudo apt-get install -y python3 python3-pip python3-venv
+  elif command -v brew >/dev/null 2>&1; then
+    brew install python3
+  else
+    echo "[melvin] Please install Python 3 manually."
+    exit 1
+  fi
+}
+
+check_dependencies() {
+  check_and_install_docker
+  check_and_install_nodejs
+  check_and_install_python
   require_cmd curl
+}
+
+cmd_launch_bg() {
+  check_dependencies
   configure_env
   ensure_dirs
   ensure_data_files
@@ -288,7 +345,7 @@ cmd_launch() {
   if wait_for_api; then
     create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
     echo "[melvin] Melvin is running!"
-    echo "Visit http://localhost:8001 to request an account or log in."
+    echo "Visit $API_URL to request an account or log in."
     echo "Admin login: ${INITIAL_ADMIN_USERNAME_VALUE}"
   else
     echo "[melvin] API did not become healthy in time. Check logs via './scripts/melvin.sh logs api'"
@@ -296,8 +353,26 @@ cmd_launch() {
   fi
 }
 
+cmd_launch_fg() {
+  check_dependencies
+  configure_env
+  ensure_dirs
+  ensure_data_files
+  build_frontend
+  echo "[melvin] Starting services in foreground (Ctrl+C to stop)..."
+  docker compose up --build &
+  local compose_pid=$!
+  if wait_for_api; then
+    create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
+    echo "[melvin] ✓ Melvin is running at $API_URL"
+  else
+    echo "[melvin] API did not become healthy in time."
+  fi
+  wait "$compose_pid"
+}
+
 cmd_dev() {
-  require_cmd docker
+  check_dependencies
   configure_env
   ensure_dirs
   ensure_data_files
@@ -306,7 +381,12 @@ cmd_dev() {
 }
 
 cmd_down() {
-  docker compose down
+  if confirm "[melvin] Stop docker compose stack?"; then
+    docker compose down
+    echo "[melvin] Stack stopped."
+  else
+    echo "[melvin] Cancelled."
+  fi
 }
 
 cmd_logs() {
@@ -314,7 +394,10 @@ cmd_logs() {
 }
 
 cmd_backup() {
-  require_cmd docker
+  if ! confirm "[melvin] Create backups of Postgres and MongoDB?"; then
+    echo "[melvin] Cancelled."
+    return
+  fi
   ensure_dirs
   local ts="$(date +%Y%m%d-%H%M%S)"
   local backup_root="$REPO_ROOT/backups/$ts"
@@ -327,14 +410,97 @@ cmd_backup() {
   echo "[melvin] Backups stored in $backup_root"
 }
 
+cmd_add_redis_service() {
+  if grep -q "^[[:space:]]*redis:" "$REPO_ROOT/docker-compose.yml"; then
+    echo "[melvin] docker-compose already defines a redis service."
+    return
+  fi
+  cat >> "$REPO_ROOT/docker-compose.yml" <<'YAML'
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+
+volumes:
+  redis_data:
+YAML
+  echo "[melvin] Added redis service to docker-compose.yml."
+}
+
+cmd_enable_redis() {
+  ensure_env
+  export ENV_FILE_PATH="$ENV_FILE"
+  set_env_var "REDIS_URL" "redis://redis:6379/0"
+  echo "[melvin] REDIS_URL set to redis://redis:6379/0"
+  cmd_add_redis_service
+  docker compose up -d redis || echo "[melvin] Failed to start redis"
+}
+
+cmd_migrate() {
+  require_cmd docker
+  docker compose exec -T api alembic upgrade head || echo "[melvin] Alembic migration failed"
+}
+
+cmd_eval() {
+  require_cmd docker
+  docker compose exec -T api python -u scripts/evaluate.py || echo "[melvin] Evaluation script failed"
+}
+
+cmd_ui() {
+  while true; do
+    cat <<MENU
+
+Melvin management UI
+1) Launch (background)
+2) Launch (foreground)
+3) Dev (foreground, rebuild frontend)
+4) Stop stack
+5) Tail logs
+6) Backup databases
+7) Enable Redis service
+8) Run DB migrations
+9) Run evaluation harness
+10) Check dependencies
+11) Add redis service to docker-compose.yml
+0) Exit
+MENU
+    read -r -p "Select an option: " choice
+    case "$choice" in
+      1) cmd_launch_bg ;;
+      2) cmd_launch_fg ;;
+      3) cmd_dev ;;
+      4) cmd_down ;;
+      5) read -r -p "Service (blank=all): " svc; cmd_logs "$svc" ;;
+      6) cmd_backup ;;
+      7) cmd_enable_redis ;;
+      8) cmd_migrate ;;
+      9) cmd_eval ;;
+      10) check_dependencies ;;
+      11) cmd_add_redis_service ;;
+      0) exit 0 ;;
+      *) echo "Invalid choice" ;;
+    esac
+  done
+}
+
 usage() {
   cat <<USAGE
 Usage: scripts/melvin.sh <command>
-  launch       Interactive setup + build + start stack
-  dev          Run docker compose stack in foreground (rebuild frontend)
-  down         Stop docker compose stack
-  logs [svc]   Tail logs (optional service filter)
-  backup       Dump Postgres and Mongo backups into ./backups
+  launch         Interactive setup + build + start stack (background)
+  launch-fg      Same as launch but keeps docker compose in foreground
+  dev            Run docker compose up with rebuilds in foreground
+  down           Stop docker compose stack
+  logs [svc]     Tail logs (optional service filter)
+  backup         Backup Postgres and MongoDB data
+  enable-redis   Configure REDIS_URL and start redis service
+  add-redis-service  Append redis service definition to docker-compose.yml
+  migrate        Run Alembic migrations inside api container
+  eval           Run evaluation harness inside api container
+  check-deps     Check/install Docker, Node.js, Python, curl
+  ui             Interactive text UI
 USAGE
 }
 
@@ -342,10 +508,18 @@ command="${1:-launch}"
 shift || true
 
 case "$command" in
-  launch) cmd_launch ;;
+  launch) cmd_launch_bg ;;
+  launch-bg) cmd_launch_bg ;;
+  launch-fg) cmd_launch_fg ;;
   dev) cmd_dev ;;
   down) cmd_down ;;
   logs) cmd_logs "$@" ;;
   backup) cmd_backup ;;
+  enable-redis) cmd_enable_redis ;;
+  add-redis-service) cmd_add_redis_service ;;
+  migrate) cmd_migrate ;;
+  eval) cmd_eval ;;
+  check-deps) check_dependencies ;;
+  ui) cmd_ui ;;
   *) usage; exit 1 ;;
 esac
