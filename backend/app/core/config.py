@@ -43,7 +43,15 @@ class Settings(BaseSettings):
     @classmethod
     def parse_origins(cls, value):
         if isinstance(value, str):
-            return [item.strip() for item in value.split(",") if item.strip()]
+            stripped = value.strip()
+            if stripped.startswith("["):
+                import json
+
+                try:
+                    return json.loads(stripped)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("Invalid JSON for allowed_origins") from exc
+            return [item.strip() for item in stripped.split(",") if item.strip()]
         return value
 
     model_config = SettingsConfigDict(
