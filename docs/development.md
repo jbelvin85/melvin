@@ -67,6 +67,7 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 - [x] Build admin control panel for approving/activating new user account requests (available in the React SPA).
 - [x] Implement `scripts/melvin.sh` (or equivalent) to bootstrap environments, manage secrets, run docker-compose, and handle deployments (see docs/setup.md).
 - [x] Implement user-request queue workflow (request submission, admin approval/denial; users reattempt login to check status).
+- [x] Ensure the launch script seeds the initial admin account automatically via `/api/auth/bootstrap`.
 - [ ] Draft relational + document database schemas (Postgres + MongoDB) covering auth, approvals, conversations, and auditing using industry-standard patterns (initial SQLAlchemy models exist; need ERD + migrations + documentation).
 
 ## Risks / Unknowns

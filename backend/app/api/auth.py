@@ -46,6 +46,23 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
     return TokenResponse(access_token=token)
 
 
+@router.post("/bootstrap", status_code=204)
+def bootstrap_admin(payload: AccountRequestCreate, db: Session = Depends(get_db)) -> None:
+    user = db.query(User).filter(User.username == payload.username).first()
+    if user:
+        if not user.is_admin:
+            user.is_admin = True
+            db.commit()
+        return
+    admin_user = User(
+        username=payload.username,
+        password_hash=hash_password(payload.password),
+        is_admin=True,
+    )
+    db.add(admin_user)
+    db.commit()
+
+
 @router.get("/requests", response_model=list[AccountRequestOut])
 def list_requests(
     _: User = Depends(get_current_admin),
