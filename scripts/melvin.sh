@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}" )/.. && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 DATA_DIR="$REPO_ROOT/data"
 RAW_DATA_DIR="$DATA_DIR/raw"
 PROCESSED_DIR="$DATA_DIR/processed"
