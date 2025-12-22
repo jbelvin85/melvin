@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from ..core.database import get_db
+from ..dependencies import get_db
 from ..models.banned_card import BannedCard
 from ..schemas.banned_card import (
     BannedCardCreate,
