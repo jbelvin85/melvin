@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     )
     initial_admin_username: str = "admin"
     initial_admin_password: str = "ChangeMe!123"
+    scryfall_base_url: str = "https://api.scryfall.com"
+    scryfall_cache_ttl_seconds: int = 60 * 60  # 1 hour default cache TTL
+    # Optional Redis URL for shared caching (example: redis://redis:6379/0)
+    redis_url: str | None = None
 
     @field_validator("allowed_origins", mode="before")
     @classmethod

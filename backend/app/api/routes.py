@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import auth, banned_cards, conversations
+from . import auth, banned_cards, conversations, profiles, scryfall, game_state, rules
 
 
 router = APIRouter()
@@ -14,5 +14,9 @@ def healthcheck() -> dict:
 router.include_router(auth.router)
 router.include_router(banned_cards.router)
 router.include_router(conversations.router)
+router.include_router(profiles.router)
+router.include_router(scryfall.router)
+router.include_router(game_state.router)
+router.include_router(rules.router)
 
 

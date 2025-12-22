@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
+import ScryfallSearch from './components/ScryfallSearch';
+import BoardBuilder from './components/BoardBuilder';
 
 type Conversation = {
   id: number;
@@ -294,6 +296,9 @@ function App() {
           </div>
         </section>
       )}
+
+      <ScryfallSearch />
+      <BoardBuilder />
     </div>
   );
 }

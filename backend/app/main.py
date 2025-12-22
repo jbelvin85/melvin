@@ -7,7 +7,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .api.routes import router as api_router
 from .core.config import get_settings
+from .core.database import SessionLocal
 from .services.bootstrap import init_db
+from .services.assessment_bootstrap import bootstrap_assessment_questions
 from .services.ingest import ingest_service
 
 
@@ -26,6 +28,12 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event() -> None:
     init_db()
+    # Bootstrap assessment questions
+    db = SessionLocal()
+    try:
+        bootstrap_assessment_questions(db)
+    finally:
+        db.close()
     # Ensure datastore loaded on startup
     from .services.melvin import melvin_service  # noqa: F401
 
