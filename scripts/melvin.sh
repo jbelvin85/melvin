@@ -415,7 +415,13 @@ cmd_add_redis_service() {
     echo "[melvin] docker-compose already defines a redis service."
     return
   fi
-  cat >> "$REPO_ROOT/docker-compose.yml" <<'YAML'
+  python3 - "$REPO_ROOT/docker-compose.yml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+service_snippet = """
   redis:
     image: redis:7
     restart: unless-stopped
@@ -423,10 +429,24 @@ cmd_add_redis_service() {
       - redis_data:/data
     ports:
       - "6379:6379"
+"""
 
-volumes:
-  redis_data:
-YAML
+if "  redis:" not in text:
+    if "\nvolumes:" in text:
+        text = text.replace("\nvolumes:", f"\n{service_snippet}\nvolumes:", 1)
+    else:
+        text += f"\n{service_snippet}\nvolumes:\n"
+
+if "  redis_data:" not in text:
+    if "  ollama_data:" in text:
+        text = text.replace("  ollama_data:\n", "  ollama_data:\n  redis_data:\n", 1)
+    elif "\nvolumes:\n" in text:
+        text = text.replace("\nvolumes:\n", "\nvolumes:\n  redis_data:\n", 1)
+    else:
+        text += "\nvolumes:\n  redis_data:\n"
+
+path.write_text(text)
+PY
   echo "[melvin] Added redis service to docker-compose.yml."
 }
 
