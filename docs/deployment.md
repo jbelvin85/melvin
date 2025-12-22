@@ -35,6 +35,7 @@
 - Store API keys (if any future external services) outside the repo and inject them at runtime through Docker secrets or env files ignored by git.
 - Password policy enforced by the API: minimum 8 characters with uppercase, lowercase, numeric, and symbol characters; setup script generates compliant defaults.
 - Backups: `scripts/melvin.sh backup` will dump Postgres and MongoDB, compress the archives, and rotate them under `/var/backups/melvin` (daily snapshots, keep latest 7) to fit within the server’s 500 GB SSD.
+- Data refresh: use the Scryfall bulk data API (`GET https://api.scryfall.com/bulk-data`) to download updated Oracle/rulings files before rebuilding ingestion artifacts.
 - Host ports: API exposed on `http://localhost:8001` (mapped to container port `8000`), Postgres published on host port `8004` (mapped to container `5432`) to avoid conflicts with system services.
 
 ## Observability

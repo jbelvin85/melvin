@@ -5,6 +5,7 @@ Melvin is an AI rules assistant for Magic: The Gathering. It must answer judge-s
 - `MagicCompRules 20251114.txt` (Comprehensive Rules snapshot).
 - `oracle-cards-20251221100301.json` (Oracle card database dump).
 - `rulings-20251221100031.json` (Historic rulings dump).
+- Scryfall bulk data endpoint (`GET https://api.scryfall.com/bulk-data`) used to download/update Oracle cards and rulings dumps on demand (store results under `data/raw/`).
 - Live data from the Scryfall REST API for freshness gaps.
 The assistant also needs to analyze card interactions, detect infinite loops, and recommend plays or rulings.
 
@@ -52,6 +53,7 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 
 ## Data Handling Notes
 - Keep original dumps under `data/raw/` (local-only; gitignored due to size). Treat derived embeddings as build artifacts (ignored by git, reproduced via scripts under `data/processed/`).
+- `scripts/melvin.sh launch` calls the Scryfall bulk API to refresh Oracle/rulings dumps automatically; if offline, drop those files into `data/raw/` manually.
 - Implement chunk metadata linking back to source rule IDs and card identifiers.
 - Cache Scryfall lookups to respect rate limits.
 

@@ -10,10 +10,10 @@ Melvin is an open-source Magic: The Gathering rules assistant that combines the 
 - `docs/setup.md` – plan for the setup/deployment automation script.
 
 ### Data Layout
-- Raw datasets live under `data/raw/` (not tracked in git due to size). Copy the following files into that folder before running the stack:
+- Raw datasets live under `data/raw/` (not tracked in git due to size). The launch script will try to download the Scryfall dumps automatically; if it cannot (offline environments), place these files manually:
   - `MagicCompRules 20251114.txt`
-  - `oracle-cards-20251221100301.json`
-  - `rulings-20251221100031.json`
+  - `oracle-cards-20251221100301.json` (download via `GET https://api.scryfall.com/bulk-data`)
+  - `rulings-20251221100031.json` (same endpoint)
 - Derived artifacts (embeddings, caches) will later live under `data/processed/` (to be generated via scripts).
 
 ### Quick Start

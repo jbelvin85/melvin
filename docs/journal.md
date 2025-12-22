@@ -20,6 +20,7 @@
 - Built React + Tailwind SPA (account request/login, chat UI, admin queue) bundled with Vite and served from the API container.
 - Created interactive `scripts/melvin.sh launch` command that prompts for admin credentials, generates secrets, builds frontend, starts containers, and outputs the local URL for onboarding.
 - README/docs updated with new quick-start instructions and setup details.
+- Added auto-download of Scryfall bulk data (cards + rulings) to `scripts/melvin.sh launch`; manual placement only needed when offline.
 
 ## Open Questions
 - When will the identified deployment server be available for continuous hosting?

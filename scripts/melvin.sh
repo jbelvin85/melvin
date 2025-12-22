@@ -61,6 +61,58 @@ find_existing_data_file() {
 }
       echo "10) Check dependencies"
 
+download_scryfall_bulk() {
+  local bulk_type="$1"
+  local destination="$2"
+  python3 - "$bulk_type" "$destination" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+bulk_type = sys.argv[1]
+destination = Path(sys.argv[2])
+
+try:
+    with urllib.request.urlopen("https://api.scryfall.com/bulk-data", timeout=60) as resp:
+        metadata = json.load(resp)
+except urllib.error.URLError as exc:
+    print(f"[melvin] Failed to reach Scryfall bulk endpoint: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+entries = metadata.get("data", [])
+match = next((item for item in entries if item.get("type") == bulk_type), None)
+if match is None:
+    print(f"[melvin] Bulk data type '{bulk_type}' not found in Scryfall response.", file=sys.stderr)
+    sys.exit(1)
+
+download_url = match.get("download_uri")
+if not download_url:
+    print(f"[melvin] Download URI missing for bulk type '{bulk_type}'.", file=sys.stderr)
+    sys.exit(1)
+
+print(f"[melvin] Downloading '{bulk_type}' from {download_url}")
+try:
+    with urllib.request.urlopen(download_url, timeout=600) as resp, open(destination, "wb") as handle:
+        handle.write(resp.read())
+except urllib.error.URLError as exc:
+    print(f"[melvin] Failed to download bulk data '{bulk_type}': {exc}", file=sys.stderr)
+    sys.exit(1)
+
+print(f"[melvin] Saved '{bulk_type}' bulk data to {destination}")
+PY
+}
+
+bulk_type_for_filename() {
+  local filename="$1"
+  case "$filename" in
+    oracle-cards*) echo "oracle_cards" ;;
+    rulings*) echo "rulings" ;;
+    *) echo "" ;;
+  esac
+}
+
 require_cmd() {
   local cmd="$1"
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -256,6 +308,16 @@ ensure_data_files() {
       cp "$auto_source" "$target"
       echo "[melvin] Copied '$filename' from '$auto_source' to '$target'."
       continue
+    fi
+    local bulk_type
+    bulk_type="$(bulk_type_for_filename "$filename")"
+    if [[ -n "$bulk_type" ]]; then
+      echo "[melvin] Attempting automatic download of '$filename' from Scryfall."
+      if download_scryfall_bulk "$bulk_type" "$target"; then
+        continue
+      else
+        echo "[melvin] Automatic download failed for '$filename'."
+      fi
     fi
     echo "[melvin] Missing data file: $target"
     while [[ ! -f "$target" ]]; do

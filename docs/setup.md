@@ -29,14 +29,15 @@ We will author a single entrypoint script (working name: `scripts/melvin.sh`) th
   - `dev`: rebuilds the frontend and runs `docker compose up` in the foreground (for local debugging).
   - `down`: stops the compose stack.
   - `logs [service]`: tails logs.
-  - `backup`: runs Postgres/Mongo dumps into `./backups/<timestamp>/`.
-- Remaining improvements: integrate admin CLI helpers (approve/deny requests), add secret rotation, integrate remote backup upload, and hook the script into CI/CD workflows.
+- `backup`: runs Postgres/Mongo dumps into `./backups/<timestamp>/`.
+- Remaining improvements: integrate Scryfall bulk data download (`GET https://api.scryfall.com/bulk-data`) to refresh Oracle/rulings dumps, add admin CLI helpers (approve/deny requests), add secret rotation, integrate remote backup upload, and hook the script into CI/CD workflows.
 
 ## Prerequisites
 - Docker + Docker Compose plugin installed on the host.
 - Node.js + npm (used to install/build the frontend before containers start).
 - curl (used for the health-check polling).
 - `openssl` or Python 3 (already required) for secret generation.
+- Outbound HTTPS access to `api.scryfall.com` if you want the script to auto-download Scryfall bulk data; otherwise place the files manually.
 
 ## Implementation Notes
 - Script should be idempotent so it can be re-run safely.
