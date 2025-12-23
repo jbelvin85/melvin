@@ -255,7 +255,7 @@ build_frontend() {
 }
 
 wait_for_api() {
-  local retries=60
+  local retries=120
   local delay=2
   for ((i=1; i<=retries; i++)); do
     if curl -fsS "$API_URL/api/health" >/dev/null 2>&1; then
@@ -263,7 +263,7 @@ wait_for_api() {
       return 0
     fi
     if ((i % 10 == 0)); then
-      echo "[melvin] Waiting for API to become healthy... ($i/$retries attempts)"
+      echo "[melvin] Waiting for API to become healthy... ($i/$retries attempts, ~$((i*delay))s elapsed)"
     fi
     sleep "$delay"
   done
