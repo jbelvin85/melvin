@@ -48,6 +48,7 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 ## Current Implementation Snapshot
 - Backend FastAPI app live under `backend/app/` with data-loader-based responses (keyword heuristic), auth, conversation management, and admin queue endpoints.
 - Database: SQLAlchemy models for users, account requests, conversations; runtime uses Postgres + MongoDB (messages) via docker-compose.
+- Startup: DB initialization now retries with backoff to tolerate slower Postgres boot; LLM/vectorstore stack loads lazily on first request so the API can report healthy before heavy downloads occur.
 - Frontend: React + Tailwind SPA (Vite) served by the backend; supports requesting accounts, logging in, listing/sending conversations, and administrative approvals.
 - Bootstrap script: `scripts/melvin.sh launch` prompts for admin credentials, generates secrets, builds the frontend, starts docker-compose, and prints `http://localhost:8000`.
 
@@ -69,6 +70,7 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 - [x] Implement user-request queue workflow (request submission, admin approval/denial; users reattempt login to check status).
 - [x] Ensure the launch script seeds the initial admin account automatically via `/api/auth/bootstrap`.
 - [ ] Draft relational + document database schemas (Postgres + MongoDB) covering auth, approvals, conversations, and auditing using industry-standard patterns (initial SQLAlchemy models exist; need ERD + migrations + documentation).
+- [ ] Add a pre-warm step (optional flag) to build embeddings + pull Ollama model during setup so first-question latency stays predictable.
 
 ## Risks / Unknowns
 - Model quality vs. hardware limits once all rule text is loaded.

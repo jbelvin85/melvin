@@ -22,6 +22,12 @@
 - README/docs updated with new quick-start instructions and setup details.
 - Added auto-download of Scryfall bulk data (cards + rulings) to `scripts/melvin.sh launch`; manual placement only needed when offline.
 
+## 2025-??-?? (startup stability)
+- Upgraded Chromadb to a pydantic-2-compatible release to unblock backend image builds.
+- Made the LLM/vectorstore service lazy-loaded so API healthchecks are not blocked by model downloads or Chroma initialization; first question now performs the heavy load.
+- Added retry/backoff around DB initialization to tolerate slow Postgres startup in docker-compose.
+- Documented the first-request warm-up behavior and added a TODO to offer an optional pre-warm step during setup.
+
 ## Open Questions
 - When will the identified deployment server be available for continuous hosting?
 - Do we need password rotation/reset tooling beyond the current policy (e.g., admin-triggered resets, forced changes)?

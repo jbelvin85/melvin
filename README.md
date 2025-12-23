@@ -26,6 +26,7 @@ Prereqs: Docker + Docker Compose plugin, Node.js/npm, curl.
 ```
 
 Use the printed URL to submit a user request, log in as the admin to approve users, and begin chatting with Melvin.
+Note: the first question you ask will lazily spin up the model + Chroma stores and may take extra time while Ollama and embeddings warm up; subsequent calls are faster.
 
 Start with the documentation hub when onboarding or planning new work.
 # melvin
