@@ -255,19 +255,27 @@ build_frontend() {
 }
 
 wait_for_api() {
-  local retries=120
-  local delay=2
-  for ((i=1; i<=retries; i++)); do
+  local timeout_seconds="${WAIT_FOR_API_TIMEOUT:-900}"
+  local interval_seconds="${WAIT_FOR_API_INTERVAL:-5}"
+  local start
+  start=$(date +%s)
+  echo "[melvin] Waiting for API health (timeout ${timeout_seconds}s)..."
+  while true; do
     if curl -fsS "$API_URL/api/health" >/dev/null 2>&1; then
       echo "[melvin] API is healthy"
       return 0
     fi
-    if ((i % 10 == 0)); then
-      echo "[melvin] Waiting for API to become healthy... ($i/$retries attempts, ~$((i*delay))s elapsed)"
+    local now
+    now=$(date +%s)
+    local elapsed=$((now - start))
+    if (( elapsed >= timeout_seconds )); then
+      return 1
     fi
-    sleep "$delay"
+    if (( elapsed % 60 == 0 )); then
+      echo "[melvin] Still waiting... ${elapsed}s elapsed"
+    fi
+    sleep "$interval_seconds"
   done
-  return 1
 }
 
 create_admin_account() {
