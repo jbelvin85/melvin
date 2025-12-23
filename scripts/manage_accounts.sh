@@ -350,8 +350,20 @@ interactive_menu() {
 
 # CLI mode functions
 view_pending_requests_cli() {
+  # Check if we have authentication token - if not, try to get it
+  if [[ -z "$ADMIN_TOKEN" ]]; then
+    echo "Authentication required to view pending requests."
+    echo ""
+    login_admin_interactive
+    if [[ -z "$ADMIN_TOKEN" ]]; then
+      echo "Error: Authentication failed."
+      exit 1
+    fi
+  fi
+  
   local response
-  response=$(curl -fsS -X GET "$API_URL/api/auth/requests" 2>/dev/null || echo "")
+  response=$(curl -fsS -X GET "$API_URL/api/auth/requests" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" 2>/dev/null || echo "")
   
   if [[ -z "$response" ]] || [[ "$response" == "[]" ]]; then
     echo "No pending account requests."
@@ -369,8 +381,20 @@ approve_request_cli() {
     exit 1
   fi
   
+  # Check authentication - if not, try to get it
+  if [[ -z "$ADMIN_TOKEN" ]]; then
+    echo "Authentication required to approve requests."
+    echo ""
+    login_admin_interactive
+    if [[ -z "$ADMIN_TOKEN" ]]; then
+      echo "Error: Authentication failed."
+      exit 1
+    fi
+  fi
+  
   local response
   response=$(curl -fsS -X POST "$API_URL/api/auth/requests/$request_id/approve" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{}" 2>/dev/null || echo "")
   
@@ -390,8 +414,20 @@ deny_request_cli() {
     exit 1
   fi
   
+  # Check authentication - if not, try to get it
+  if [[ -z "$ADMIN_TOKEN" ]]; then
+    echo "Authentication required to deny requests."
+    echo ""
+    login_admin_interactive
+    if [[ -z "$ADMIN_TOKEN" ]]; then
+      echo "Error: Authentication failed."
+      exit 1
+    fi
+  fi
+  
   local response
   response=$(curl -fsS -X POST "$API_URL/api/auth/requests/$request_id/deny" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{}" 2>/dev/null || echo "")
   
@@ -472,7 +508,10 @@ login_admin_interactive() {
   
   ADMIN_USER="$username"
   print_status "success" "Login successful! Welcome, $username."
-  pause_screen
+  # Only pause if stdin is a terminal (interactive mode)
+  if [[ -t 0 ]]; then
+    pause_screen
+  fi
 }
 
 # Run main
