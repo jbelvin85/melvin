@@ -13,7 +13,7 @@ from ..schemas.conversation import (
     Message,
     MessageCreate,
 )
-from ..services.melvin import melvin_service
+from ..services.melvin import get_melvin_service
 from ..services.messages import append_message, fetch_messages
 
 
@@ -71,7 +71,7 @@ async def chat_with_melvin(
     if not record or record.user_id != user.id:
         raise HTTPException(status_code=404, detail="Conversation not found")
     await append_message(conversation_id, "user", payload.question)
-    response_text = melvin_service.answer_question(payload.question)
+    response_text = get_melvin_service().answer_question(payload.question)
     await append_message(conversation_id, "melvin", response_text)
     return Message(sender="melvin", content=response_text, created_at=datetime.utcnow())
 

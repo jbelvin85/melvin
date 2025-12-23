@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
+import threading
+
 from .data_loader import datastore
 from ..core.config import get_settings
 from langchain_community.llms import Ollama
@@ -164,7 +166,14 @@ Question: {question}
         return self.chain.invoke(payload)
 
 
-melvin_service = MelvinService()
+_melvin_service: MelvinService | None = None
+_melvin_lock = threading.Lock()
 
 
-
+def get_melvin_service() -> MelvinService:
+    global _melvin_service
+    if _melvin_service is None:
+        with _melvin_lock:
+            if _melvin_service is None:
+                _melvin_service = MelvinService()
+    return _melvin_service

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
@@ -9,10 +12,22 @@ from ..models.user import User
 from .banned_cards import banned_cards_service
 
 
-def init_db() -> None:
-    Base.metadata.create_all(bind=engine)
-    ensure_admin_exists()
-    load_banned_cards()
+def init_db(max_retries: int = 10, base_delay: float = 1.0) -> None:
+    """Initialize database objects with simple retry for service startup races."""
+    attempt = 0
+    while attempt < max_retries:
+        try:
+            Base.metadata.create_all(bind=engine)
+            ensure_admin_exists()
+            load_banned_cards()
+            return
+        except OperationalError as exc:
+            attempt += 1
+            if attempt >= max_retries:
+                raise
+            sleep_for = base_delay * attempt
+            print(f"[melvin] Database init failed (attempt {attempt}/{max_retries}): {exc}. Retrying in {sleep_for}s.")
+            time.sleep(sleep_for)
 
 
 def ensure_admin_exists() -> None:

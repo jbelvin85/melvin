@@ -34,10 +34,7 @@ async def startup_event() -> None:
         bootstrap_assessment_questions(db)
     finally:
         db.close()
-    # Ensure datastore loaded on startup
-    from .services.melvin import melvin_service  # noqa: F401
-
-    _ = melvin_service
+    # Melvin service now lazy-loads on first use to keep startup fast
 
 
 @app.post("/ingest", tags=["system"])

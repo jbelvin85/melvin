@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Any, Dict, Optional
 
 from ..dependencies import get_db
-from ..services.melvin import melvin_service
+from ..services.melvin import get_melvin_service
 from ..services import rule_engine
 from ..services.state_manager import state_manager_cls
 
@@ -76,7 +76,7 @@ def analyze(
         tools_context_parts.append(f"{k}: {v}")
 
     try:
-        answer = melvin_service.answer_question(question)
+        answer = get_melvin_service().answer_question(question)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"LLM error: {e}")
 
