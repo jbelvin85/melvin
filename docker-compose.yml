@@ -20,12 +20,13 @@ services:
       RAW_DATA_DIR: /data/raw
       PROCESSED_DATA_DIR: /data/processed
       FRONTEND_DIST: /app/frontend/dist
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 30
-      start_period: 10s
+      start_period: 30s
 
   postgres:
     image: postgres:15
