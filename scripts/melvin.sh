@@ -473,6 +473,11 @@ cmd_eval() {
   docker compose exec -T api python -u scripts/evaluate.py || echo "[melvin] Evaluation script failed"
 }
 
+cmd_accounts() {
+  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  "$script_dir/manage_accounts.sh"
+}
+
 cmd_ui() {
   while true; do
     cat <<MENU
@@ -524,6 +529,8 @@ Usage: scripts/melvin.sh <command>
   migrate        Run Alembic migrations inside api container
   eval           Run evaluation harness inside api container
   check-deps     Check/install Docker, Node.js, Python, curl
+  accounts       Retro-style account management CLI (view/approve/deny requests)
+  cli            Comprehensive management interface (RECOMMENDED - tabbed UI)
   ui             Interactive text UI
 USAGE
 }
@@ -544,6 +551,8 @@ case "$command" in
   migrate) cmd_migrate ;;
   eval) cmd_eval ;;
   check-deps) check_dependencies ;;
+  accounts) cmd_accounts ;;
+  cli) bash "$REPO_ROOT/scripts/melvin_cli.sh" ;;
   ui) cmd_ui ;;
   *) usage; exit 1 ;;
 esac
