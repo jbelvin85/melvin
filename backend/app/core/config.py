@@ -74,7 +74,9 @@ class Settings(BaseSettings):
     )
 
     @classmethod
-    def settings_customise_sources(cls, init_settings, env_settings, file_secret_settings):
+    def settings_customise_sources(
+        cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
         class SafeEnvSettingsSource(EnvSettingsSource):
             def decode_complex_value(self, field_name, field, value):
                 if field_name == "allowed_origins":
@@ -92,6 +94,7 @@ class Settings(BaseSettings):
         return (
             init_settings,
             SafeEnvSettingsSource(cls),
+            dotenv_settings,
             file_secret_settings,
         )
 
