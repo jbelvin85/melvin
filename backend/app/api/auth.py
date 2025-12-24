@@ -22,6 +22,7 @@ def submit_account_request(
     payload: AccountRequestCreate,
     db: Session = Depends(get_db),
 ) -> AccountRequestOut:
+    AccountRequestCreate.validate_password_strength(payload.password)
     existing_user = db.query(User).filter(User.username == payload.username).first()
     existing_request = db.query(AccountRequest).filter(AccountRequest.username == payload.username).first()
     if existing_user or existing_request:
@@ -48,12 +49,13 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
 
 @router.post("/bootstrap", status_code=204)
 def bootstrap_admin(payload: AccountRequestCreate, db: Session = Depends(get_db)) -> None:
-    user = db.query(User).filter(User.username == payload.username).first()
-    if user:
-        if not user.is_admin:
-            user.is_admin = True
-            db.commit()
-        return
+    # Bootstrap is allowed only if no users exist yet (first run).
+    existing_user_count = db.query(User).count()
+    if existing_user_count > 0:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bootstrap is disabled after initial setup")
+
+    AccountRequestCreate.validate_password_strength(payload.password)
+
     admin_user = User(
         username=payload.username,
         password_hash=hash_password(payload.password),

@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-API_URL="${API_URL:-http://localhost:8001}"
+API_URL="${MELVIN_API_URL:-${API_URL:-http://localhost:8001}}"
 ADMIN_TOKEN=""
 ADMIN_USER=""
 
@@ -137,7 +137,12 @@ view_pending_requests() {
       local username=$(echo "$line" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
       local status=$(echo "$line" | grep -o '"status":"[^"]*' | cut -d'"' -f4)
       
-      printf "%-10s │ %-16s │ %-8s │ %s\n" "$id" "$username" "$status" "$(date)"
+      # Extract created_at if present
+      local created_at=$(echo "$line" | grep -o '"created_at":"[^"]*' | cut -d'"' -f4)
+      if [[ -z "$created_at" ]]; then
+        created_at="unknown"
+      fi
+      printf "%-10s │ %-16s │ %-8s │ %s\n" "$id" "$username" "$status" "$created_at"
       ((count++))
     fi
   done <<< "$response"

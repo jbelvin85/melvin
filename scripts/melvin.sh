@@ -100,8 +100,24 @@ prompt_credentials() {
       echo "Passwords do not match."
       continue
     fi
-    if [[ ${#admin_pass} -lt 8 ]]; then
-      echo "Password too short."
+    if [[ ${#admin_pass} -lt 12 ]]; then
+      echo "Password too short (min 12)."
+      continue
+    fi
+    if ! [[ "$admin_pass" =~ [A-Z] ]]; then
+      echo "Password must include an uppercase letter."
+      continue
+    fi
+    if ! [[ "$admin_pass" =~ [a-z] ]]; then
+      echo "Password must include a lowercase letter."
+      continue
+    fi
+    if ! [[ "$admin_pass" =~ [0-9] ]]; then
+      echo "Password must include a number."
+      continue
+    fi
+    if ! [[ "$admin_pass" =~ [\!\@\#\$\%\^\&\*\(\)\_\+\-\=\[\]\{\}\;\:\'\"\<\>\,\.\?\/\~\`] ]]; then
+      echo "Password must include a symbol."
       continue
     fi
     break
