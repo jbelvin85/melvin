@@ -74,9 +74,7 @@ class Settings(BaseSettings):
     )
 
     @classmethod
-    def settings_customise_sources(
-        cls, init_settings, env_settings, dotenv_settings, file_secret_settings
-    ):
+    def settings_customise_sources(cls, *sources):
         class SafeEnvSettingsSource(EnvSettingsSource):
             def decode_complex_value(self, field_name, field, value):
                 if field_name == "allowed_origins":
@@ -91,12 +89,18 @@ class Settings(BaseSettings):
                         return value
                 return super().decode_complex_value(field_name, field, value)
 
-        return (
-            init_settings,
-            SafeEnvSettingsSource(cls),
-            dotenv_settings,
-            file_secret_settings,
-        )
+        if not sources:
+            return (SafeEnvSettingsSource(cls),)
+
+        init_settings = sources[0]
+        rest = list(sources[1:])
+
+        if rest:
+            rest[0] = SafeEnvSettingsSource(cls)
+        else:
+            rest = [SafeEnvSettingsSource(cls)]
+
+        return (init_settings, *rest)
 
 
 @lru_cache(maxsize=1)
