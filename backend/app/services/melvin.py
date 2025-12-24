@@ -14,6 +14,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from ..services.scryfall import scryfall_service
 from ..services.state_manager import state_manager_cls
 from .cards import card_search_service
+from .knowledge import knowledge_store
 
 if TYPE_CHECKING:
     from ..models.user import User
@@ -43,6 +44,7 @@ Rules: {rules_context}
 Cards: {cards_context}
 Rulings: {rulings_context}
 Commander & Intro Guides: {reference_context}
+Knowledge Graph: {knowledge_context}
 {player_guidance}
 
 Question: {question}
@@ -188,6 +190,7 @@ Question: {question}
                 names = ", ".join(card.name for card in tagged_entries if card.name)
                 thinking.append({"label": "Card context", "detail": f"Parsed tagged cards: {names}"})
 
+        knowledge_sections: List[str] = []
         if scryfall_cards_context:
             external_card_sections.append(f"Scryfall autocomplete:\n{scryfall_cards_context}")
             first_line = scryfall_cards_context.splitlines()[0] if scryfall_cards_context.splitlines() else scryfall_cards_context
@@ -196,6 +199,35 @@ Question: {question}
             else:
                 card_name = first_line.strip()
             thinking.append({"label": "Card context", "detail": f"Added Scryfall summary for {card_name}"})
+
+        for entry in resolved_cards:
+            meta = knowledge_store.get_card(entry.name or "")
+            if not meta:
+                continue
+            lines = [f"{meta.get('name')} — {meta.get('type_line') or ''}".strip()]
+            if meta.get("color_identity"):
+                lines.append(f"Color Identity: {', '.join(meta['color_identity'])}")
+            if meta.get("mana_cost"):
+                lines.append(f"Mana Cost: {meta['mana_cost']}")
+            if meta.get("keywords"):
+                lines.append(f"Keywords: {', '.join(meta['keywords'])}")
+            legalities = meta.get("legalities") or {}
+            commander_legality = legalities.get("commander")
+            if commander_legality:
+                lines.append(f"Commander legality: {commander_legality}")
+            produced = meta.get("produced_mana")
+            if produced:
+                lines.append(f"Produces mana: {', '.join(produced)}")
+            if meta.get("related_rules"):
+                lines.append(f"Related rules: {', '.join(meta['related_rules'])}")
+            rulings = meta.get("rulings") or []
+            if rulings:
+                latest = rulings[-1]
+                lines.append(f"Latest ruling ({latest.get('published_at')}): {latest.get('comment')}")
+            knowledge_sections.append("\n".join(lines))
+        if knowledge_sections:
+            payload["knowledge_context"] = "\n\n".join(knowledge_sections)
+            thinking.append({"label": "Knowledge graph", "detail": "Injected structured metadata for tagged/user-selected cards."})
 
         if external_card_sections:
             payload["external_cards_context"] = "\n\n".join(external_card_sections)
@@ -275,6 +307,7 @@ Question: {question}
             "cards": prompt_input.get("cards_context", ""),
             "rulings": prompt_input.get("rulings_context", ""),
             "references": prompt_input.get("reference_context", ""),
+            "knowledge": prompt_input.get("knowledge_context", ""),
             "player_guidance": prompt_input.get("player_guidance", ""),
             "state": payload.get("state_context") or "",
             "tools": payload.get("tools_context") or "",
@@ -310,6 +343,7 @@ Question: {question}
         merged["cards_context"] = cards_text
         merged["rulings_context"] = format_docs(payload.get("rulings_context"))
         merged["reference_context"] = format_docs(payload.get("reference_context"))
+        merged["knowledge_context"] = payload.get("knowledge_context", "")
         merged["player_guidance"] = payload.get("player_guidance", "")
         return merged
 

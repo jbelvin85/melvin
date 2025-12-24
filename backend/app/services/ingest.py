@@ -3,7 +3,8 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Iterable
+from collections import defaultdict
 
 from ..core.config import get_settings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -39,9 +40,12 @@ class IngestService:
         self.rulings_path = settings.raw_data_dir / "rulings-20251221100031.json"
         self.reference_dir = settings.reference_data_dir
         self.vectorstore_path = settings.processed_data_dir / "chroma_db"
+        self.knowledge_dir = settings.processed_data_dir / "knowledge"
+        self.knowledge_dir.mkdir(parents=True, exist_ok=True)
 
         self.embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        self._raw_card_payload: List[Dict[str, Any]] = []
 
     def ingest(self) -> None:
         rules = self._load_rules(self.rules_path)
@@ -68,6 +72,9 @@ class IngestService:
         if reference_chunks:
             Chroma.from_documents(reference_chunks, self.embedding_function, persist_directory=str(self.vectorstore_path / "reference"))
 
+        card_metadata = self._build_card_metadata(self._raw_card_payload, rulings)
+        self._write_card_metadata(card_metadata)
+
     def _load_rules(self, path: Path) -> List[RuleEntry]:
         entries: List[RuleEntry] = []
         rule_pattern = re.compile(r"^(?P<id>\d{1,3}(?:\.\d+[a-z]?)?)\.\s+(?P<text>.+)$")
@@ -86,6 +93,7 @@ class IngestService:
     def _load_cards(self, path: Path) -> List[CardEntry]:
         with path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
+        self._raw_card_payload = payload
         cards: List[CardEntry] = []
         for card in payload:
             cards.append(
@@ -122,5 +130,44 @@ class IngestService:
                 continue
             docs.append({"text": text, "metadata": {"source": path.name}})
         return docs
+
+    def _build_card_metadata(self, cards_payload: Iterable[Dict[str, Any]], rulings: List[RulingEntry]) -> Dict[str, Dict[str, Any]]:
+        rulings_map: Dict[str, List[Dict[str, str]]] = defaultdict(list)
+        for ruling in rulings:
+            if ruling.oracle_id:
+                rulings_map[ruling.oracle_id].append(
+                    {"comment": ruling.comment, "published_at": ruling.published_at}
+                )
+        metadata: Dict[str, Dict[str, Any]] = {}
+        rule_pattern = re.compile(r"\d{3}\.\d+[a-z]?")
+        for card in cards_payload:
+            name = card.get("name")
+            if not name:
+                continue
+            oracle_text = card.get("oracle_text") or ""
+            oracle_id = card.get("oracle_id")
+            related_rules = sorted(set(rule_pattern.findall(oracle_text)))
+            entry = {
+                "name": name,
+                "oracle_id": oracle_id,
+                "type_line": card.get("type_line"),
+                "mana_cost": card.get("mana_cost"),
+                "color_identity": card.get("color_identity"),
+                "keywords": card.get("keywords"),
+                "power": card.get("power"),
+                "toughness": card.get("toughness"),
+                "loyalty": card.get("loyalty"),
+                "produced_mana": card.get("produced_mana"),
+                "legalities": card.get("legalities"),
+                "oracle_text": oracle_text,
+                "related_rules": related_rules,
+                "rulings": rulings_map.get(oracle_id or "", []),
+            }
+            metadata[name.lower()] = entry
+        return metadata
+
+    def _write_card_metadata(self, metadata: Dict[str, Dict[str, Any]]) -> None:
+        target = self.knowledge_dir / "card_metadata.json"
+        target.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
 ingest_service = IngestService()

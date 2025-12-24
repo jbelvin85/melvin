@@ -60,6 +60,9 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 - Implement chunk metadata linking back to source rule IDs and card identifiers.
 - Cache Scryfall lookups to respect rate limits.
 - The launch script automatically triggers the `/ingest` endpoint after the API becomes healthy so the latest raw/reference data are embedded at each run.
+- Every ingestion pass now also emits structured metadata under `data/processed/knowledge/card_metadata.json`. Each entry captures color identity, mana cost, keywords, produced mana, inferred rule references, and linked rulings for that Oracle ID. This metadata is loaded by the API at runtime and fed into Melvin’s context so he can reason about legality, commander identity, and recent rulings without re-parsing raw card text.
+- Users can “tag” cards inline by wrapping their names in square brackets (e.g., `[Hullbreacher]`) inside any chat message. The backend resolves those tags against the local Oracle dump, validates that the cards exist, and injects their summaries plus structured metadata into the LLM prompt. The React composer hints at this syntax and the context drawer shows exactly which tagged cards were added.
+- The knowledge store is exposed via `backend/app/services/knowledge.py` for future tooling (combo detectors, rule cross-references, format checkers). When adding new data-driven helpers, prefer storing compact JSON snapshots alongside the embeddings so containers can reload them quickly during startup.
 
 ## Near-Term Engineering Tasks
 - [ ] Define exact LLM hosting approach (model + runtime) that satisfies open-source constraint.
