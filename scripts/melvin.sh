@@ -255,15 +255,27 @@ build_frontend() {
 }
 
 wait_for_api() {
-  local retries=20
-  local delay=3
-  for ((i=1; i<=retries; i++)); do
+  local timeout_seconds="${WAIT_FOR_API_TIMEOUT:-900}"
+  local interval_seconds="${WAIT_FOR_API_INTERVAL:-5}"
+  local start
+  start=$(date +%s)
+  echo "[melvin] Waiting for API health (timeout ${timeout_seconds}s)..."
+  while true; do
     if curl -fsS "$API_URL/api/health" >/dev/null 2>&1; then
+      echo "[melvin] API is healthy"
       return 0
     fi
-    sleep "$delay"
+    local now
+    now=$(date +%s)
+    local elapsed=$((now - start))
+    if (( elapsed >= timeout_seconds )); then
+      return 1
+    fi
+    if (( elapsed % 60 == 0 )); then
+      echo "[melvin] Still waiting... ${elapsed}s elapsed"
+    fi
+    sleep "$interval_seconds"
   done
-  return 1
 }
 
 create_admin_account() {
@@ -469,6 +481,11 @@ cmd_eval() {
   docker compose exec -T api python -u scripts/evaluate.py || echo "[melvin] Evaluation script failed"
 }
 
+cmd_accounts() {
+  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  "$script_dir/manage_accounts.sh"
+}
+
 cmd_ui() {
   while true; do
     cat <<MENU
@@ -520,6 +537,8 @@ Usage: scripts/melvin.sh <command>
   migrate        Run Alembic migrations inside api container
   eval           Run evaluation harness inside api container
   check-deps     Check/install Docker, Node.js, Python, curl
+  accounts       Retro-style account management CLI (view/approve/deny requests)
+  cli            Comprehensive management interface (RECOMMENDED - tabbed UI)
   ui             Interactive text UI
 USAGE
 }
@@ -540,6 +559,8 @@ case "$command" in
   migrate) cmd_migrate ;;
   eval) cmd_eval ;;
   check-deps) check_dependencies ;;
+  accounts) cmd_accounts ;;
+  cli) bash "$REPO_ROOT/scripts/melvin_cli.sh" ;;
   ui) cmd_ui ;;
   *) usage; exit 1 ;;
 esac

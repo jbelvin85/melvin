@@ -10,7 +10,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from ..services.scryfall import scryfall_service
 from ..services.state_manager import state_manager_cls
 
@@ -44,13 +44,14 @@ Rulings: {rulings_context}
 Question: {question}
 """
         )
+        question_selector = RunnableLambda(lambda x: x["question"])
         self.chain = (
-            RunnableParallel({
-                "rules_context": self.rules_retriever, 
-                "cards_context": self.cards_retriever,
-                "rulings_context": self.rulings_retriever,
-                "question": RunnablePassthrough()
-            })
+            RunnablePassthrough.assign(
+                rules_context=question_selector | self.rules_retriever,
+                cards_context=question_selector | self.cards_retriever,
+                rulings_context=question_selector | self.rulings_retriever,
+            )
+            | RunnableLambda(self._prepare_prompt_input)
             | self.prompt
             | self.llm
             | StrOutputParser()
@@ -124,7 +125,7 @@ Question: {question}
 
         payload = {"question": question}
         if cards_context:
-            payload["cards_context"] = cards_context
+            payload["external_cards_context"] = cards_context
         if state_context:
             payload["state_context"] = state_context
 
@@ -164,6 +165,31 @@ Question: {question}
         payload["player_guidance"] = player_guidance
 
         return self.chain.invoke(payload)
+
+    def _prepare_prompt_input(self, payload: dict) -> dict:
+        def format_docs(value):
+            if value is None:
+                return ""
+            if isinstance(value, str):
+                return value
+            if isinstance(value, list):
+                parts = []
+                for item in value:
+                    content = getattr(item, "page_content", None)
+                    parts.append(content if content is not None else str(item))
+                return "\n\n".join(parts)
+            return str(value)
+
+        merged = dict(payload)
+        merged["rules_context"] = format_docs(payload.get("rules_context"))
+        cards_text = format_docs(payload.get("cards_context"))
+        extra_cards = payload.get("external_cards_context")
+        if extra_cards:
+            cards_text = f"{cards_text}\n\nExternal Card Info:\n{extra_cards}".strip()
+        merged["cards_context"] = cards_text
+        merged["rulings_context"] = format_docs(payload.get("rulings_context"))
+        merged["player_guidance"] = payload.get("player_guidance", "")
+        return merged
 
 
 _melvin_service: MelvinService | None = None

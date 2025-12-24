@@ -68,7 +68,7 @@ function App() {
   const loadConversations = async () => {
     if (!token) return;
     try {
-      const response = await api.get<Conversation[]>('/conversations', authHeaders);
+      const response = await api.get<Conversation[]>('/conversations/', authHeaders);
       setConversations(response.data);
       if (response.data.length && !selectedConversation) {
         selectConversation(response.data[0]);
@@ -122,7 +122,7 @@ function App() {
   const handleCreateConversation = async () => {
     if (!newConversationTitle.trim()) return;
     try {
-      const response = await api.post('/conversations', {
+      const response = await api.post('/conversations/', {
         title: newConversationTitle,
       }, authHeaders);
       setNewConversationTitle('New Conversation');
