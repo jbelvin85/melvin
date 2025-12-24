@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List, Tuple, Dict
 
 import threading
 
@@ -10,7 +10,6 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from ..services.scryfall import scryfall_service
 from ..services.state_manager import state_manager_cls
 
@@ -44,19 +43,6 @@ Rulings: {rulings_context}
 Question: {question}
 """
         )
-        question_selector = RunnableLambda(lambda x: x["question"])
-        self.chain = (
-            RunnablePassthrough.assign(
-                rules_context=question_selector | self.rules_retriever,
-                cards_context=question_selector | self.cards_retriever,
-                rulings_context=question_selector | self.rulings_retriever,
-            )
-            | RunnableLambda(self._prepare_prompt_input)
-            | self.prompt
-            | self.llm
-            | StrOutputParser()
-        )
-
     def _ensure_loaded(self) -> None:
         if not datastore.rules or not datastore.cards or not datastore.rulings:
             datastore.load()
@@ -80,6 +66,21 @@ Question: {question}
         return f"Player Profile Guidance: {guidance}" if guidance else ""
 
     def answer_question(self, question: str, user: Optional[User] = None) -> str:
+        response_text, _ = self.answer_question_with_details(question, user=user)
+        return response_text
+
+    def _summarize_doc(self, label: str, docs: List) -> Optional[Dict[str, str]]:
+        if not docs:
+            return None
+        snippet = docs[0].page_content.strip().replace("\n", " ")
+        if len(snippet) > 200:
+            snippet = f"{snippet[:197]}..."
+        return {"label": label, "detail": f"Top excerpt: {snippet}"}
+
+    def answer_question_with_details(self, question: str, user: Optional[User] = None) -> Tuple[str, List[Dict[str, str]]]:
+        thinking: List[Dict[str, str]] = []
+        thinking.append({"label": "Question received", "detail": question.strip()})
+
         # Try to detect a card name via Scryfall autocomplete on the whole question.
         # If we get a suggestion, fetch the named card and include a short summary
         # in the `cards_context` to help the model.
@@ -126,9 +127,14 @@ Question: {question}
         payload = {"question": question}
         if cards_context:
             payload["external_cards_context"] = cards_context
+            first_line = cards_context.splitlines()[0] if cards_context.splitlines() else cards_context
+            if first_line.lower().startswith("name:"):
+                card_name = first_line.split(":", 1)[1].strip()
+            else:
+                card_name = first_line.strip()
+            thinking.append({"label": "Card context", "detail": f"Added Scryfall summary for {card_name}"})
         if state_context:
             payload["state_context"] = state_context
-
             # Derive deterministic rule outputs for top suspected card and include as tools_context
             try:
                 tools_context_parts = []
@@ -157,14 +163,41 @@ Question: {question}
 
                 if tools_context_parts:
                     payload["tools_context"] = "\n".join(tools_context_parts)
+                    thinking.append({"label": "Rule engine", "detail": "Added deterministic rule engine checks to context"})
             except Exception:
                 pass
         
         # Add player guidance based on profile
         player_guidance = self._build_player_guidance(user)
         payload["player_guidance"] = player_guidance
+        if player_guidance:
+            thinking.append({"label": "Player profile", "detail": player_guidance})
 
-        return self.chain.invoke(payload)
+        rules_docs = self.rules_retriever.get_relevant_documents(question)
+        cards_docs = self.cards_retriever.get_relevant_documents(question)
+        rulings_docs = self.rulings_retriever.get_relevant_documents(question)
+
+        payload["rules_context"] = rules_docs
+        payload["cards_context"] = cards_docs
+        payload["rulings_context"] = rulings_docs
+
+        summary = self._summarize_doc("Rules context", rules_docs)
+        if summary:
+            thinking.append(summary)
+        summary = self._summarize_doc("Card knowledge", cards_docs)
+        if summary:
+            thinking.append(summary)
+        summary = self._summarize_doc("Rulings reference", rulings_docs)
+        if summary:
+            thinking.append(summary)
+
+        prompt_input = self._prepare_prompt_input(payload)
+        prompt_value = self.prompt.format_prompt(**prompt_input)
+        llm_response = self.llm.invoke(prompt_value.to_string())
+        answer_text = llm_response if isinstance(llm_response, str) else StrOutputParser().invoke(llm_response)
+        answer_text = answer_text.strip()
+        thinking.append({"label": "Final synthesis", "detail": "Generated response with llama3 via Ollama."})
+        return answer_text, thinking
 
     def _prepare_prompt_input(self, payload: dict) -> dict:
         def format_docs(value):

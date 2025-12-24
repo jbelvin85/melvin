@@ -9,10 +9,16 @@ type Conversation = {
   created_at: string;
 };
 
+type ThinkingStep = {
+  label: string;
+  detail: string;
+};
+
 type Message = {
   sender: string;
   content: string;
   created_at: string;
+  thinking?: ThinkingStep[];
 };
 
 type AccountRequest = {
@@ -51,6 +57,8 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newConversationTitle, setNewConversationTitle] = useState('New Conversation');
   const [question, setQuestion] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [thinkingPreview, setThinkingPreview] = useState<ThinkingStep[]>([]);
 
   const [pendingRequests, setPendingRequests] = useState<AccountRequest[]>([]);
   const [adminStatus, setAdminStatus] = useState<string | null>(null);
@@ -89,6 +97,33 @@ function App() {
     </div>
   );
 
+  const resetSession = (message?: string) => {
+    setToken(null);
+    setIsAdmin(false);
+    localStorage.removeItem('melvin_token');
+    setConversations([]);
+    setMessages([]);
+    setSelectedConversation(null);
+    setPendingRequests([]);
+    if (message) {
+      setAdminStatus(message);
+    } else {
+      setAdminStatus(null);
+    }
+  };
+
+  const handleAuthError = (error: unknown, fallbackMessage?: string) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      resetSession('Please log in again to continue.');
+      return true;
+    }
+    if (fallbackMessage) {
+      alert(fallbackMessage);
+    }
+    console.error(error);
+    return false;
+  };
+
   useEffect(() => {
     if (token) {
       const payload = decodeToken(token);
@@ -109,7 +144,7 @@ function App() {
         selectConversation(response.data[0]);
       }
     } catch (error) {
-      console.error(error);
+      handleAuthError(error);
     }
   };
 
@@ -119,7 +154,7 @@ function App() {
       const response = await api.get(`/conversations/${conversation.id}`, authHeaders);
       setMessages(response.data.messages ?? []);
     } catch (error) {
-      console.error(error);
+      handleAuthError(error);
     }
   };
 
@@ -164,7 +199,7 @@ function App() {
       loadConversations();
       selectConversation(response.data);
     } catch (error) {
-      alert('Failed to create conversation');
+      handleAuthError(error, 'Failed to create conversation');
     }
   };
 
@@ -174,14 +209,20 @@ function App() {
     const userMessage: Message = { sender: 'user', content: question, created_at: new Date().toISOString() };
     setMessages(prev => [...prev, userMessage]);
     setQuestion('');
+    setIsThinking(true);
+    setThinkingPreview([{ label: 'Analyzing', detail: 'Collecting rules, cards, and rulings context.' }]);
     try {
       const response = await api.post(`/conversations/${convoId}/chat`, {
         question: userMessage.content,
       }, authHeaders);
       setMessages(prev => [...prev, response.data]);
+      setThinkingPreview(response.data.thinking ?? []);
     } catch (error) {
-      alert('Failed to send message');
+      if (!handleAuthError(error, 'Failed to send message')) {
+        console.error(error);
+      }
     }
+    setIsThinking(false);
   };
 
   const loadPendingRequests = async () => {
@@ -190,7 +231,7 @@ function App() {
       const response = await api.get<AccountRequest[]>('/auth/requests', authHeaders);
       setPendingRequests(response.data);
     } catch (error) {
-      console.error('Failed to load pending requests');
+      handleAuthError(error);
     }
   };
 
@@ -200,7 +241,9 @@ function App() {
       setAdminStatus('Request approved');
       loadPendingRequests();
     } catch (error) {
-      setAdminStatus('Failed to approve request');
+      if (!handleAuthError(error)) {
+        setAdminStatus('Failed to approve request');
+      }
     }
   };
 
@@ -210,17 +253,14 @@ function App() {
       setAdminStatus('Request denied');
       loadPendingRequests();
     } catch (error) {
-      setAdminStatus('Failed to deny request');
+      if (!handleAuthError(error)) {
+        setAdminStatus('Failed to deny request');
+      }
     }
   };
 
   const handleLogout = () => {
-    setToken(null);
-    setIsAdmin(false);
-    localStorage.removeItem('melvin_token');
-    setConversations([]);
-    setMessages([]);
-    setSelectedConversation(null);
+    resetSession();
     setAuthView('login');
   };
 
@@ -377,8 +417,33 @@ function App() {
                 <div key={idx} className={`p-3 rounded ${message.sender === 'user' ? 'bg-blue-900/40' : 'bg-slate-800'}`}>
                   <p className="text-sm text-slate-400 mb-1">{message.sender} — {new Date(message.created_at).toLocaleTimeString()}</p>
                   <p>{message.content}</p>
+                  {message.sender !== 'user' && message.thinking && message.thinking.length > 0 && (
+                    <details className="mt-2 text-xs text-slate-300/80">
+                      <summary className="cursor-pointer text-blue-200">View Melvin&apos;s reasoning</summary>
+                      <ul className="mt-2 space-y-1">
+                        {message.thinking.map((step, stepIdx) => (
+                          <li key={`${idx}-${stepIdx}`} className="border-l border-blue-500/40 pl-2">
+                            <span className="font-semibold text-slate-100">{step.label}:</span> {step.detail}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                 </div>
               ))}
+              {isThinking && (
+                <div className="p-3 rounded bg-blue-900/20 border border-blue-500/50 animate-pulse">
+                  <p className="text-sm text-blue-200 mb-1">Melvin is preparing a response…</p>
+                  <ul className="text-xs text-slate-300 space-y-1">
+                    {thinkingPreview.map((step, idx) => (
+                      <li key={`${step.label}-${idx}`} className="border-l border-blue-400/40 pl-2">
+                        <span className="font-semibold">{step.label}:</span> {step.detail}
+                      </li>
+                    ))}
+                    {thinkingPreview.length === 0 && <li>Gathering knowledge...</li>}
+                  </ul>
+                </div>
+              )}
             </div>
             <div className="flex gap-3">
               <textarea className="flex-1 rounded bg-slate-800 p-3" rows={3} placeholder="Ask Melvin..." value={question} onChange={(e) => setQuestion(e.target.value)} />

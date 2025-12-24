@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -14,13 +14,20 @@ mongo_db = mongo_client[settings.mongo_db]
 messages_collection = mongo_db["messages"]
 
 
-async def append_message(conversation_id: int, sender: str, content: str) -> None:
+async def append_message(
+    conversation_id: int,
+    sender: str,
+    content: str,
+    thinking: Optional[List[dict]] = None,
+) -> None:
     document = {
         "conversation_id": conversation_id,
         "sender": sender,
         "content": content,
         "created_at": datetime.utcnow(),
     }
+    if thinking:
+        document["thinking"] = thinking
     await messages_collection.insert_one(document)
 
 
@@ -33,6 +40,7 @@ async def fetch_messages(conversation_id: int) -> List[dict]:
                 "sender": doc.get("sender", ""),
                 "content": doc.get("content", ""),
                 "created_at": doc.get("created_at"),
+                "thinking": doc.get("thinking"),
             }
         )
     return results

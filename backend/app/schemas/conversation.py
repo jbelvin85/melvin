@@ -21,6 +21,7 @@ class Message(BaseModel):
     sender: str
     content: str
     created_at: datetime
+    thinking: Optional[List["ThinkingStep"]] = None
 
 
 class MessageCreate(BaseModel):
@@ -30,3 +31,11 @@ class MessageCreate(BaseModel):
 class ConversationDetail(BaseModel):
     conversation: ConversationOut
     messages: List[Message]
+
+
+class ThinkingStep(BaseModel):
+    label: str
+    detail: str
+
+
+Message.model_rebuild()
