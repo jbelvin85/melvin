@@ -129,6 +129,28 @@ configure_env() {
     export INITIAL_ADMIN_PASSWORD_VALUE="$(get_env_var "INITIAL_ADMIN_PASSWORD")"
   fi
   set_env_var "FRONTEND_DIST" "/app/frontend/dist"
+
+  local current_origins
+  current_origins="$(get_env_var "ALLOWED_ORIGINS" || true)"
+# shellcheck disable=SC2154
+  if [[ -z "$current_origins" || "${current_origins:0:1}" != "[" ]]; then
+    local origins_json
+    if [[ -n "$current_origins" ]]; then
+      origins_json="$(CURRENT_ORIGINS="$current_origins" python3 - <<'PY'
+import json, os
+value = os.environ.get("CURRENT_ORIGINS", "")
+parts = [item.strip() for item in value.split(",") if item.strip()]
+if not parts:
+    print('["http://localhost:8001","http://127.0.0.1:8001"]')
+else:
+    print(json.dumps(parts))
+PY
+)"
+    else
+      origins_json='["http://localhost:8001","http://127.0.0.1:8001"]'
+    fi
+    set_env_var "ALLOWED_ORIGINS" "$origins_json"
+  fi
   echo "[melvin] .env ready."
 }
 
