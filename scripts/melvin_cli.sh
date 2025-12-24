@@ -38,12 +38,35 @@ WHITE='\033[1;37m'
 GRAY='\033[0;37m'
 NC='\033[0m' # No Color
 
+# Constants
+UI_WIDTH=80
+UI_INNER_WIDTH=$((UI_WIDTH - 2))
+
+# Helpers
+pad_line() {
+  local text="$1"
+  local padding=$((UI_INNER_WIDTH - ${#text}))
+  if (( padding < 0 )); then padding=0; fi
+  printf "│%s%*s│\n" "$text" "$padding" ""
+}
+
+draw_box_top() {
+  printf "┌"
+  printf '─%.0s' $(seq 1 "$UI_INNER_WIDTH")
+  printf "┐\n"
+}
+
+draw_box_bottom() {
+  printf "└"
+  printf '─%.0s' $(seq 1 "$UI_INNER_WIDTH")
+  printf "┘\n"
+}
+
 # Clear screen and draw header
 draw_header() {
   clear
   local title="MELVIN - Magic: the Gathering AI Assistant"
-  local inner_width=74
-  local padding=$((inner_width - ${#title}))
+  local padding=$((UI_INNER_WIDTH - ${#title}))
   if (( padding < 0 )); then padding=0; fi
   local spaces
   printf -v spaces "%*s" "$padding" ""
@@ -53,114 +76,85 @@ draw_header() {
 }
 
 draw_tabs() {
-  local labels=()
-  for i in "${!TABS[@]}"; do
-    labels+=("[${TAB_KEYS[$i]^}:${TABS[$i]}]")
-  done
-
   local active_idx=$CURRENT_TAB
   local active_label="${TABS[$active_idx]}"
-  local box_inner=$(( ${#active_label} + 2 ))
-  if (( box_inner < 8 )); then box_inner=8; fi
-  local total_pad=$(( box_inner - ${#active_label} ))
-  local left_pad=$(( total_pad / 2 ))
-  local right_pad=$(( total_pad - left_pad ))
-  local box
-  printf -v box "│ %s%s%s │" "$(printf '%*s' "$left_pad" "")" "$active_label" "$(printf '%*s' "$right_pad" "")"
+  local box_width=$(( ${#active_label} + 4 ))
+  if (( box_width < 10 )); then box_width=10; fi
 
-  local tokens=()
-  for i in "${!labels[@]}"; do
+  # Build tab line with active box
+  local parts=()
+  for i in "${!TABS[@]}"; do
     if [[ $i -eq $active_idx ]]; then
-      tokens+=("$box")
+      printf -v parts[i] "┌%s┐" "$(printf '─%.0s' $(seq 1 $((box_width-2))))"
     else
-      tokens+=("${labels[$i]}")
+      parts[i]=""
     fi
   done
+  local line1="${parts[*]}"
+  line1="${line1//  / }"
+  line1=$(printf "%-$(($UI_INNER_WIDTH))s" "$line1")
 
-  local line2="${tokens[*]}"
-  line2="${line2//  / }"
-
-  # compute active start position
-  local active_start=0
-  for i in "${!tokens[@]}"; do
+  local label_parts=()
+  for i in "${!TABS[@]}"; do
     if [[ $i -eq $active_idx ]]; then
-      break
+      printf -v label_parts[i] "│ %-*s │" $((box_width-4)) "$active_label"
+    else
+      label_parts[i]="[${TAB_KEYS[$i]^}:${TABS[$i]}]"
     fi
-    (( active_start += ${#tokens[$i]} + 1 ))
   done
-  local active_len=${#tokens[$active_idx]}
-
-  # top border over active
-  local line1
-  printf -v line1 "%*s" $active_start ""
-  line1="${line1}┌"
-  line1="${line1}$(printf '%*s' $((active_len-2)) "" | tr ' ' '─')"
-  line1="${line1}┐"
+  local line2="${label_parts[*]}"
+  line2="${line2//  / }"
+  line2=$(printf "%-$(($UI_INNER_WIDTH))s" "$line2")
 
   echo -e "${line1}"
   echo -e "${line2}"
-
-  TAB_BAR_WIDTH=${#line2}
-}
-
-rule_line() {
-  local width="${TAB_BAR_WIDTH:-77}"
-  local line
-  printf -v line "%*s" "$width" ""
-  line="${line// /─}"
-  echo "$line"
 }
 
 draw_menu_item() {
   local num=$1
   local label=$2
-  printf "  ${YELLOW}%-2d${NC} • %-65s\n" "$num" "$label"
+  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" "$num" "$label"
 }
 
 # Tab 0: SYSTEM
 show_system_tab() {
-  echo ""
-  local rule; rule=$(rule_line)
-  echo -e "${BLUE}${rule}${NC}"
-  echo -e "${WHITE}SYSTEM INFORMATION & DEPENDENCIES${NC}"
-  echo -e "${BLUE}${rule}${NC}"
-  echo ""
-  
+  draw_box_top
+  pad_line ""
+  pad_line "${WHITE}SYSTEM INFORMATION & DEPENDENCIES${NC}"
+  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
   draw_menu_item 1 "Check System Dependencies (Docker, Node, Python, curl)"
   draw_menu_item 2 "Install Missing Dependencies"
   draw_menu_item 3 "View System Status & Resources"
   draw_menu_item 4 "View Docker Container Status"
   draw_menu_item 5 "View API Health Status"
   draw_menu_item 6 "View Environment Configuration"
-  echo ""
-  draw_menu_item 0 "Back to Main Menu"
+  pad_line ""
+  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_box_bottom
 }
 
 # Tab 1: SETUP
 show_setup_tab() {
-  echo ""
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo -e "${WHITE}SETUP & CONFIGURATION${NC}"
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo ""
-  
+  draw_box_top
+  pad_line ""
+  pad_line "${WHITE}SETUP & CONFIGURATION${NC}"
+  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
   draw_menu_item 1 "Initialize Environment (.env Configuration)"
   draw_menu_item 2 "Verify/Download Required Data Files"
   draw_menu_item 3 "Configure Redis Cache Service"
   draw_menu_item 4 "Edit Environment Variables"
   draw_menu_item 5 "Reset Configuration to Defaults"
-  echo ""
-  draw_menu_item 0 "Back to Main Menu"
+  pad_line ""
+  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_box_bottom
 }
 
 # Tab 2: DEPLOYMENT
 show_deployment_tab() {
-  echo ""
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo -e "${WHITE}DEPLOYMENT & SERVICES${NC}"
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo ""
-  
+  draw_box_top
+  pad_line ""
+  pad_line "${WHITE}DEPLOYMENT & SERVICES${NC}"
+  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
   draw_menu_item 1 "Launch Full Stack (Background)"
   draw_menu_item 2 "Launch Full Stack (Foreground - Debug Mode)"
   draw_menu_item 3 "Development Mode (Rebuild Frontend)"
@@ -168,36 +162,34 @@ show_deployment_tab() {
   draw_menu_item 5 "Stop All Services"
   draw_menu_item 6 "Restart Services"
   draw_menu_item 7 "View Service Logs"
-  echo ""
-  draw_menu_item 0 "Back to Main Menu"
+  pad_line ""
+  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_box_bottom
 }
 
 # Tab 3: DATABASE
 show_database_tab() {
-  echo ""
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo -e "${WHITE}DATABASE & MIGRATIONS${NC}"
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo ""
-  
+  draw_box_top
+  pad_line ""
+  pad_line "${WHITE}DATABASE & MIGRATIONS${NC}"
+  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
   draw_menu_item 1 "Run Database Migrations"
   draw_menu_item 2 "Backup Postgres & MongoDB"
   draw_menu_item 3 "View Backup History"
   draw_menu_item 4 "Restore from Backup"
   draw_menu_item 5 "Connect to Postgres CLI"
   draw_menu_item 6 "Connect to MongoDB CLI"
-  echo ""
-  draw_menu_item 0 "Back to Main Menu"
+  pad_line ""
+  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_box_bottom
 }
 
 # Tab 4: USERS
 show_users_tab() {
-  echo ""
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo -e "${WHITE}USER & ACCOUNT MANAGEMENT${NC}"
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo ""
-  
+  draw_box_top
+  pad_line ""
+  pad_line "${WHITE}USER & ACCOUNT MANAGEMENT${NC}"
+  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
   draw_menu_item 1 "View Pending Account Requests"
   draw_menu_item 2 "Approve Account Request"
   draw_menu_item 3 "Deny Account Request"
@@ -205,26 +197,26 @@ show_users_tab() {
   draw_menu_item 5 "List All Users"
   draw_menu_item 6 "Reset Admin Password"
   draw_menu_item 7 "Manage User Permissions"
-  echo ""
-  draw_menu_item 0 "Back to Main Menu"
+  pad_line ""
+  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_box_bottom
 }
 
 # Tab 5: MAINTENANCE
 show_maintenance_tab() {
-  echo ""
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo -e "${WHITE}MAINTENANCE & UTILITIES${NC}"
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
-  echo ""
-  
+  draw_box_top
+  pad_line ""
+  pad_line "${WHITE}MAINTENANCE & UTILITIES${NC}"
+  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
   draw_menu_item 1 "Run Evaluation Harness"
   draw_menu_item 2 "Clean Up Docker Resources"
   draw_menu_item 3 "View Application Logs"
   draw_menu_item 4 "Performance Monitoring"
   draw_menu_item 5 "Rebuild Docker Images"
   draw_menu_item 6 "Reset Everything to Factory Defaults"
-  echo ""
-  draw_menu_item 0 "Back to Main Menu"
+  pad_line ""
+  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_box_bottom
 }
 
 show_current_tab() {
