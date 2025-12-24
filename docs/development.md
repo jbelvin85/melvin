@@ -59,6 +59,7 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 - Curated teaching/reference blurbs (e.g., “How to Play MTG,” Commander rules digest) live under `data/reference/` and are included in the ingestion run so Melvin can cite them alongside the Comprehensive Rules.
 - Implement chunk metadata linking back to source rule IDs and card identifiers.
 - Cache Scryfall lookups to respect rate limits.
+- The launch script automatically triggers the `/ingest` endpoint after the API becomes healthy so the latest raw/reference data are embedded at each run.
 
 ## Near-Term Engineering Tasks
 - [ ] Define exact LLM hosting approach (model + runtime) that satisfies open-source constraint.

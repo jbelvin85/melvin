@@ -343,6 +343,15 @@ wait_for_api() {
   done
 }
 
+run_data_ingest() {
+  echo "[melvin] Refreshing embeddings via API /ingest..."
+  if docker compose exec -T api curl -s -X POST http://localhost:8000/ingest >/dev/null; then
+    echo "[melvin] Embedding stores refreshed."
+  else
+    echo "[melvin] Failed to refresh embeddings. Check API logs or rerun 'docker compose exec api curl -X POST http://localhost:8000/ingest'."
+  fi
+}
+
 create_admin_account() {
   local username="$1"
   local password="$2"
@@ -463,6 +472,7 @@ cmd_launch_bg() {
   docker compose up --build -d
   if wait_for_api; then
     create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
+    run_data_ingest
     echo "[melvin] Melvin is running!"
     echo "Visit $API_URL to request an account or log in."
     echo "Admin login: ${INITIAL_ADMIN_USERNAME_VALUE}"
@@ -483,6 +493,7 @@ cmd_launch_fg() {
   local compose_pid=$!
   if wait_for_api; then
     create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
+    run_data_ingest
     echo "[melvin] ✓ Melvin is running at $API_URL"
   else
     echo "[melvin] API did not become healthy in time."
@@ -496,7 +507,16 @@ cmd_dev() {
   ensure_dirs
   ensure_data_files
   ensure_frontend_built
-  docker compose up --build
+  docker compose up --build &
+  local compose_pid=$!
+  if wait_for_api; then
+    create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
+    run_data_ingest
+    echo "[melvin] ✓ Dev stack is running (Ctrl+C to stop)."
+  else
+    echo "[melvin] API did not become healthy in time."
+  fi
+  wait "$compose_pid"
 }
 
 cmd_down() {
