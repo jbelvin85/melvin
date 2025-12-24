@@ -41,8 +41,14 @@ NC='\033[0m' # No Color
 # Clear screen and draw header
 draw_header() {
   clear
+  local title="MELVIN - Magic: the Gathering AI Assistant"
+  local inner_width=74
+  local padding=$((inner_width - ${#title}))
+  if (( padding < 0 )); then padding=0; fi
+  local spaces
+  printf -v spaces "%*s" "$padding" ""
   echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${CYAN}║${NC} ${WHITE}MELVIN - Magic Card AI Assistant${NC} ${CYAN}║${NC}"
+  echo -e "${CYAN}║${NC} ${WHITE}${title}${NC}${spaces} ${CYAN}║${NC}"
   echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════╝${NC}"
 }
 
