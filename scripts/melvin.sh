@@ -254,6 +254,19 @@ build_frontend() {
   fi
 }
 
+ensure_frontend_built() {
+  local index_file="$FRONTEND_DIR/dist/index.html"
+  local force="${FORCE_FRONTEND_BUILD:-}"
+  if [[ "$force" == "1" || ! -f "$index_file" ]]; then
+    echo "[melvin] Building frontend..."
+    build_frontend
+  fi
+  if [[ ! -f "$index_file" ]]; then
+    echo "[melvin] Frontend build failed; dist/index.html not found."
+    exit 1
+  fi
+}
+
 wait_for_api() {
   local timeout_seconds="${WAIT_FOR_API_TIMEOUT:-900}"
   local interval_seconds="${WAIT_FOR_API_INTERVAL:-5}"
@@ -352,7 +365,7 @@ cmd_launch_bg() {
   configure_env
   ensure_dirs
   ensure_data_files
-  build_frontend
+  ensure_frontend_built
   docker compose up --build -d
   if wait_for_api; then
     create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
@@ -370,7 +383,7 @@ cmd_launch_fg() {
   configure_env
   ensure_dirs
   ensure_data_files
-  build_frontend
+  ensure_frontend_built
   echo "[melvin] Starting services in foreground (Ctrl+C to stop)..."
   docker compose up --build &
   local compose_pid=$!
@@ -388,7 +401,7 @@ cmd_dev() {
   configure_env
   ensure_dirs
   ensure_data_files
-  build_frontend
+  ensure_frontend_built
   docker compose up --build
 }
 
