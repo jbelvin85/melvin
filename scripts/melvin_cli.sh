@@ -48,24 +48,35 @@ draw_header() {
 
 draw_tabs() {
   echo -e "${BLUE}┌─────────────────────────────────────────────────────────────────────────────┐${NC}"
-  local tab_line="${BLUE}│${NC} "
-  
+  local inner_width=77
+  local plain_content=""
+  local colored_content=""
+
   for i in "${!TABS[@]}"; do
+    local plain_item="[${TAB_KEYS[$i]^}:${TABS[$i]}]"
     if [[ $i -eq $CURRENT_TAB ]]; then
       # Highlight current tab
-      tab_line+="${WHITE}[${TAB_KEYS[$i]^}:${TABS[$i]}]${NC}"
+      colored_item="${WHITE}${plain_item}${NC}"
     else
       # Dim other tabs
-      tab_line+="${GRAY}[${TAB_KEYS[$i]^}:${TABS[$i]}]${NC}"
+      colored_item="${GRAY}${plain_item}${NC}"
     fi
-    
-    if [[ $i -lt $((${#TABS[@]} - 1)) ]]; then
-      tab_line+=" "
+
+    if [[ -n "$plain_content" ]]; then
+      plain_content+=" "
+      colored_content+=" "
     fi
+    plain_content+="$plain_item"
+    colored_content+="$colored_item"
   done
-  
-  tab_line+=" ${BLUE}│${NC}"
-  echo -e "$tab_line"
+
+  # Pad to inner width so end pipes align visually
+  local padding=$((inner_width - ${#plain_content}))
+  if ((padding < 0)); then padding=0; fi
+  local spaces
+  printf -v spaces "%*s" "$padding" ""
+
+  echo -e "${BLUE}│${NC}${colored_content}${spaces}${BLUE}│${NC}"
   echo -e "${BLUE}└─────────────────────────────────────────────────────────────────────────────┘${NC}"
 }
 
