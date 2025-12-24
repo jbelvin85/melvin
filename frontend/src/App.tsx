@@ -39,6 +39,14 @@ type ProfileSummary = {
 };
 
 type TabKey = 'chat' | 'tools' | 'profile' | 'settings';
+type CardSearchResult = {
+  name: string;
+  type_line?: string | null;
+  oracle_text?: string | null;
+};
+type CardSearchResponse = {
+  results: CardSearchResult[];
+};
 
 const api = axios.create({ baseURL: '/api' });
 
@@ -80,6 +88,12 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('chat');
   const [tonePreference, setTonePreference] = useState('Helpful and friendly');
   const [detailPreference, setDetailPreference] = useState('Balanced');
+  const [selectedCards, setSelectedCards] = useState<string[]>([]);
+  const [cardPickerOpen, setCardPickerOpen] = useState(false);
+  const [cardSearchTerm, setCardSearchTerm] = useState('');
+  const [cardSearchResults, setCardSearchResults] = useState<CardSearchResult[]>([]);
+  const [cardSearchLoading, setCardSearchLoading] = useState(false);
+  const [cardSearchError, setCardSearchError] = useState<string | null>(null);
 
   const [pendingRequests, setPendingRequests] = useState<AccountRequest[]>([]);
   const [adminStatus, setAdminStatus] = useState<string | null>(null);
@@ -101,6 +115,12 @@ function App() {
     setPendingRequests([]);
     setProfileSummary(null);
     setActiveTab('chat');
+    setSelectedCards([]);
+    setCardPickerOpen(false);
+    setCardSearchTerm('');
+    setCardSearchResults([]);
+    setCardSearchError(null);
+    setCardSearchLoading(false);
     if (message) {
       setAdminStatus(message);
     } else {
@@ -163,6 +183,60 @@ function App() {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isThinking, activeTab]);
+
+  useEffect(() => {
+    setSelectedCards([]);
+    setCardPickerOpen(false);
+    setCardSearchTerm('');
+    setCardSearchResults([]);
+    setCardSearchError(null);
+  }, [selectedConversation?.id]);
+
+  useEffect(() => {
+    if (!cardPickerOpen) {
+      setCardSearchLoading(false);
+      return;
+    }
+    const term = cardSearchTerm.trim();
+    if (term.length < 2) {
+      setCardSearchResults([]);
+      setCardSearchError(null);
+      setCardSearchLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setCardSearchLoading(true);
+    setCardSearchError(null);
+    api.get<CardSearchResponse>('/cards/search', {
+      ...authHeaders,
+      params: { q: term, limit: 8 },
+      signal: controller.signal,
+    }).then((response) => {
+      setCardSearchResults(response.data.results);
+    }).catch((error) => {
+      if (axios.isCancel(error)) {
+        return;
+      }
+      if (axios.isAxiosError(error) && error.code === 'ERR_CANCELED') {
+        return;
+      }
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+      setCardSearchError('Failed to search cards. Try again.');
+    }).finally(() => {
+      setCardSearchLoading(false);
+    });
+    return () => controller.abort();
+  }, [cardPickerOpen, cardSearchTerm, authHeaders]);
+
+  useEffect(() => {
+    if (!cardPickerOpen) {
+      setCardSearchTerm('');
+      setCardSearchResults([]);
+      setCardSearchError(null);
+    }
+  }, [cardPickerOpen]);
 
   const handleAssessmentComplete = async () => {
     await loadProfileSummary();
@@ -237,6 +311,16 @@ function App() {
     }
   };
 
+  const handleAddCard = (name: string) => {
+    setSelectedCards((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setCardSearchTerm('');
+    setCardSearchResults([]);
+  };
+
+  const handleRemoveCard = (name: string) => {
+    setSelectedCards((prev) => prev.filter((card) => card !== name));
+  };
+
   const handleSendQuestion = async () => {
     if (!selectedConversation || !question.trim()) return;
     const convoId = selectedConversation.id;
@@ -250,6 +334,7 @@ function App() {
         question: userMessage.content,
         tone: tonePreference,
         detail_level: detailPreference,
+        card_names: selectedCards,
       }, authHeaders);
       setMessages(prev => [...prev, response.data]);
       setThinkingPreview(response.data.thinking ?? []);
@@ -472,11 +557,68 @@ function App() {
               )}
               <div ref={messagesEndRef} />
             </div>
-            <div className="flex gap-3">
-              <textarea className="flex-1 rounded bg-slate-800 p-3" rows={3} placeholder="Ask Melvin..." value={question} onChange={(e) => setQuestion(e.target.value)} />
-              <button className="bg-green-600 px-4 rounded" onClick={handleSendQuestion}>
-                Send
-              </button>
+            <div className="border-t border-slate-800 pt-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-slate-400">
+                <span>Give Melvin optional card context.</span>
+                <button className="text-blue-300 hover:text-blue-200" onClick={() => setCardPickerOpen((prev) => !prev)}>
+                  {cardPickerOpen ? 'Close card selector' : 'Add cards for relevance'}
+                </button>
+              </div>
+              {selectedCards.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {selectedCards.map((card) => (
+                    <span key={card} className="bg-slate-800 border border-slate-700 rounded-full px-3 py-1 text-xs text-slate-200 flex items-center gap-2">
+                      {card}
+                      <button className="text-slate-400 hover:text-white" onClick={() => handleRemoveCard(card)} aria-label={`Remove ${card}`}>
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {cardPickerOpen && (
+                <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-3 space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 rounded bg-slate-900/80 border border-slate-700 px-3 py-2 text-sm"
+                      placeholder="Search local Oracle data..."
+                      value={cardSearchTerm}
+                      onChange={(e) => setCardSearchTerm(e.target.value)}
+                    />
+                    <button className="px-3 py-2 text-sm rounded border border-slate-600 text-slate-200" onClick={() => setCardPickerOpen(false)}>
+                      Done
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-400">Select matches from the ingested Oracle database. Only exact matches will be sent with your prompt.</p>
+                  {cardSearchError && <p className="text-xs text-red-400">{cardSearchError}</p>}
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {cardSearchLoading && <p className="text-sm text-slate-300">Searching...</p>}
+                    {!cardSearchLoading && cardSearchTerm.trim().length < 2 && (
+                      <p className="text-xs text-slate-500">Type at least two characters to search.</p>
+                    )}
+                    {!cardSearchLoading && cardSearchTerm.trim().length >= 2 && cardSearchResults.length === 0 && !cardSearchError && (
+                      <p className="text-xs text-slate-500">No matches yet.</p>
+                    )}
+                    {!cardSearchLoading && cardSearchResults.map((result) => (
+                      <button
+                        key={result.name}
+                        className="w-full text-left bg-slate-900/70 hover:bg-slate-700/70 transition rounded p-2 text-sm"
+                        onClick={() => handleAddCard(result.name)}
+                      >
+                        <p className="font-semibold text-white">{result.name}</p>
+                        {result.type_line && <p className="text-xs text-slate-300">{result.type_line}</p>}
+                        {result.oracle_text && <p className="text-xs text-slate-400 mt-1 overflow-hidden text-ellipsis whitespace-nowrap">{result.oracle_text}</p>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <textarea className="flex-1 rounded bg-slate-800 p-3" rows={3} placeholder="Ask Melvin..." value={question} onChange={(e) => setQuestion(e.target.value)} />
+                <button className="bg-green-600 px-4 rounded" onClick={handleSendQuestion}>
+                  Send
+                </button>
+              </div>
             </div>
           </section>
         </div>

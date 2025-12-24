@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Optional, List, Tuple, Dict
 
 import threading
 
-from .data_loader import datastore
+from .data_loader import datastore, CardEntry
 from ..core.config import get_settings
 from langchain_community.llms import Ollama
 from langchain_community.vectorstores import Chroma
@@ -12,6 +12,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from ..services.scryfall import scryfall_service
 from ..services.state_manager import state_manager_cls
+from .cards import card_search_service
 
 if TYPE_CHECKING:
     from ..models.user import User
@@ -86,13 +87,23 @@ Question: {question}
             snippet = f"{snippet[:197]}..."
         return {"label": label, "detail": f"Top excerpt: {snippet}"}
 
+    def _format_card_entry(self, entry: CardEntry) -> str:
+        parts = [f"Name: {entry.name}"]
+        if entry.type_line:
+            parts.append(f"Type: {entry.type_line}")
+        if entry.oracle_text:
+            parts.append(f"Oracle: {entry.oracle_text}")
+        return "\n".join(parts)
+
     def answer_question_with_details(
         self,
         question: str,
         user: Optional[User] = None,
         tone: Optional[str] = None,
         detail_level: Optional[str] = None,
+        selected_cards: Optional[List[str]] = None,
     ) -> Tuple[str, List[Dict[str, str]]]:
+        selected_cards = selected_cards or []
         thinking: List[Dict[str, str]] = []
         thinking.append({"label": "Question received", "detail": question.strip()})
         style_notes: List[str] = []
@@ -106,8 +117,9 @@ Question: {question}
         # Try to detect a card name via Scryfall autocomplete on the whole question.
         # If we get a suggestion, fetch the named card and include a short summary
         # in the `cards_context` to help the model.
-        cards_context = None
+        scryfall_cards_context = None
         state_context = None
+        external_card_sections: List[str] = []
         try:
             ac = scryfall_service.autocomplete(question)
             if ac and ac.get("data"):
@@ -123,10 +135,10 @@ Question: {question}
                     parts.append(f"Type: {card.get('type_line')}")
                 if card.get("oracle_text"):
                     parts.append(f"Oracle: {card.get('oracle_text')}")
-                cards_context = "\n".join(parts)
+                scryfall_cards_context = "\n".join(parts)
         except Exception:
             # on any failure, continue without external card context
-            cards_context = None
+            scryfall_cards_context = None
 
         # Try to attach the most recent saved board state as `state_context` if available
         try:
@@ -147,22 +159,36 @@ Question: {question}
             state_context = None
 
         payload = {"question": question}
-        if cards_context:
-            payload["external_cards_context"] = cards_context
-            first_line = cards_context.splitlines()[0] if cards_context.splitlines() else cards_context
+        resolved_cards: List[CardEntry] = []
+        if selected_cards:
+            resolved_cards = card_search_service.resolve_cards(selected_cards)
+            if resolved_cards:
+                manual_sections = [self._format_card_entry(entry) for entry in resolved_cards]
+                external_card_sections.append("User-selected cards:\n" + "\n\n".join(manual_sections))
+                names = ", ".join(card.name for card in resolved_cards if card.name)
+                thinking.append({"label": "Card context", "detail": f"Added user card references: {names}"})
+
+        if scryfall_cards_context:
+            external_card_sections.append(f"Scryfall autocomplete:\n{scryfall_cards_context}")
+            first_line = scryfall_cards_context.splitlines()[0] if scryfall_cards_context.splitlines() else scryfall_cards_context
             if first_line.lower().startswith("name:"):
                 card_name = first_line.split(":", 1)[1].strip()
             else:
                 card_name = first_line.strip()
             thinking.append({"label": "Card context", "detail": f"Added Scryfall summary for {card_name}"})
+
+        if external_card_sections:
+            payload["external_cards_context"] = "\n\n".join(external_card_sections)
         if state_context:
             payload["state_context"] = state_context
             # Derive deterministic rule outputs for top suspected card and include as tools_context
             try:
                 tools_context_parts = []
                 top_card_name = None
-                if isinstance(cards_context, str) and cards_context.startswith("Name:"):
-                    top_card_name = cards_context.splitlines()[0].split(":", 1)[1].strip()
+                if resolved_cards and resolved_cards[0].name:
+                    top_card_name = resolved_cards[0].name
+                elif isinstance(scryfall_cards_context, str) and scryfall_cards_context.startswith("Name:"):
+                    top_card_name = scryfall_cards_context.splitlines()[0].split(":", 1)[1].strip()
 
                 if top_card_name:
                     player_id = None

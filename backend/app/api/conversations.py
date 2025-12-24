@@ -79,6 +79,7 @@ async def chat_with_melvin(
         user=user,
         tone=payload.tone,
         detail_level=payload.detail_level,
+        selected_cards=payload.card_names or [],
     )
     await append_message(conversation_id, "melvin", response_text, thinking=thinking_steps)
     return Message(sender="melvin", content=response_text, created_at=datetime.utcnow(), thinking=thinking_steps)

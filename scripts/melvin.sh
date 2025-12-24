@@ -345,7 +345,7 @@ wait_for_api() {
 
 run_data_ingest() {
   echo "[melvin] Refreshing embeddings via API /ingest..."
-  if docker compose exec -T api curl -s -X POST http://localhost:8000/ingest >/dev/null; then
+  if docker compose exec -T api curl -X POST http://localhost:8000/ingest; then
     echo "[melvin] Embedding stores refreshed."
   else
     echo "[melvin] Failed to refresh embeddings. Check API logs or rerun 'docker compose exec api curl -X POST http://localhost:8000/ingest'."
