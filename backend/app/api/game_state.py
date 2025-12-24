@@ -8,6 +8,7 @@ from ..services.state_manager import StateManager, state_manager_cls
 router = APIRouter(prefix="/game_state", tags=["game_state"])
 
 
+@router.post("", status_code=201)
 @router.post("/", status_code=201)
 def create_state(payload: dict, db: Session = Depends(get_db)) -> dict:
     manager = state_manager_cls(db)
@@ -18,6 +19,7 @@ def create_state(payload: dict, db: Session = Depends(get_db)) -> dict:
     return rec.to_dict()
 
 
+@router.get("")
 @router.get("/")
 def list_states(db: Session = Depends(get_db)) -> list[dict]:
     manager = state_manager_cls(db)

@@ -57,7 +57,10 @@ async def get_conversation(
     if not record or record.user_id != user.id:
         raise HTTPException(status_code=404, detail="Conversation not found")
     messages = await fetch_messages(conversation_id)
-    return ConversationDetail(conversation=record, messages=[Message(**msg) for msg in messages])
+    from ..schemas.conversation import ConversationOut
+
+    conversation_schema = ConversationOut.model_validate(record)
+    return ConversationDetail(conversation=conversation_schema, messages=[Message(**msg) for msg in messages])
 
 
 @router.post("/{conversation_id}/chat", response_model=Message)
@@ -74,4 +77,3 @@ async def chat_with_melvin(
     response_text = get_melvin_service().answer_question(payload.question)
     await append_message(conversation_id, "melvin", response_text)
     return Message(sender="melvin", content=response_text, created_at=datetime.utcnow())
-
