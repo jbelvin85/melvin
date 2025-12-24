@@ -1,9 +1,17 @@
+import json
 from functools import lru_cache
 from pathlib import Path
 from typing import List
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _json_loads_allow_blank(value: str):
+    stripped = value.strip() if isinstance(value, str) else value
+    if stripped in (None, ""):
+        return None
+    return json.loads(value)
 
 
 class Settings(BaseSettings):
@@ -42,22 +50,34 @@ class Settings(BaseSettings):
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def parse_origins(cls, value):
+        default_factory = cls.model_fields["allowed_origins"].default_factory
+        if value is None:
+            return default_factory() if default_factory else value
+
         if isinstance(value, str):
             stripped = value.strip()
+            if not stripped:
+                return default_factory() if default_factory else value
             if stripped.startswith("["):
-                import json
-
                 try:
-                    return json.loads(stripped)
+                    parsed = json.loads(stripped)
                 except json.JSONDecodeError as exc:
                     raise ValueError("Invalid JSON for allowed_origins") from exc
+                if not isinstance(parsed, list):
+                    raise ValueError("allowed_origins JSON must be a list")
+                return [item.strip() for item in parsed if isinstance(item, str) and item.strip()]
             return [item.strip() for item in stripped.split(",") if item.strip()]
+
+        if isinstance(value, (list, tuple, set)):
+            return [item.strip() for item in map(str, value) if item.strip()]
+
         return value
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        json_loads=_json_loads_allow_blank,
     )
 
 
