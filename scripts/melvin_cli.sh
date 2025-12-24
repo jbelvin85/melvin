@@ -28,10 +28,10 @@ declare -a TAB_KEYS=(
   "m"
 )
 
-# Color codes
+# Color codes (keep out of fixed-width UI rows to avoid alignment issues)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
+YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 WHITE='\033[1;37m'
@@ -41,6 +41,8 @@ NC='\033[0m' # No Color
 # Constants
 UI_WIDTH=80
 UI_INNER_WIDTH=$((UI_WIDTH - 2))
+CONTENT_GAP_START=2
+CONTENT_GAP_WIDTH=0
 
 # Helpers
 pad_line() {
@@ -62,6 +64,12 @@ draw_box_bottom() {
   printf "┘\n"
 }
 
+draw_divider() {
+  printf "│"
+  printf '─%.0s' $(seq 1 "$UI_INNER_WIDTH")
+  printf "│\n"
+}
+
 # Clear screen and draw header
 draw_header() {
   clear
@@ -70,9 +78,9 @@ draw_header() {
   if (( padding < 0 )); then padding=0; fi
   local spaces
   printf -v spaces "%*s" "$padding" ""
-  echo -e "${CYAN}╔════════════════════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${CYAN}║${NC} ${WHITE}${title}${NC}${spaces} ${CYAN}║${NC}"
-  echo -e "${CYAN}╚════════════════════════════════════════════════════════════════════════════╝${NC}"
+  echo "╔════════════════════════════════════════════════════════════════════════════╗"
+  echo "║ ${title}${spaces} ║"
+  echo "╚════════════════════════════════════════════════════════════════════════════╝"
 }
 
 draw_tabs() {
@@ -84,30 +92,56 @@ draw_tabs() {
   local line1="  ┌$(printf '─%.0s' $(seq 1 $((box_width-2))))┐"
   printf "%-${UI_WIDTH}s\n" "$line1"
 
-  local line2=""
+  local indent="  "
+  local line2="$indent"
+  local pos=${#indent}
   for i in "${!TABS[@]}"; do
     if [[ $i -eq $active_idx ]]; then
-      line2+="│ $(printf '%-*s' $((box_width-4)) "$active_label") │ "
+      local tab_text="│ $(printf '%-*s' $((box_width-4)) "$active_label") │"
+      CONTENT_GAP_START=$pos
+      CONTENT_GAP_WIDTH=${#tab_text}
+      line2+="$tab_text "
+      pos=$((pos + ${#tab_text} + 1))
     else
-      line2+="[${TAB_KEYS[$i]^}:${TABS[$i]}] "
+      local segment="[${TAB_KEYS[$i]^}:${TABS[$i]}] "
+      line2+="$segment"
+      pos=$((pos + ${#segment}))
     fi
   done
   line2="${line2% }"
   printf "%-${UI_WIDTH}s\n" "$line2"
 }
 
+draw_content_top() {
+  local gap_start=${CONTENT_GAP_START:-2}
+  local gap_width=${CONTENT_GAP_WIDTH:-0}
+  if (( gap_start < 2 )); then gap_start=2; fi
+  local left="┌"
+  local prefix_len=$((gap_start - 2))
+  local prefix=""
+  if (( prefix_len > 0 )); then
+    prefix=$(printf '─%.0s' $(seq 1 "$prefix_len"))
+  fi
+  local gap=$(printf '%*s' "$gap_width" "")
+  local suffix_len=$((UI_WIDTH - 1 - (gap_start + gap_width - 1)))
+  if (( suffix_len < 0 )); then suffix_len=0; fi
+  local suffix=$(printf '─%.0s' $(seq 1 "$suffix_len"))
+  local right="┐"
+  printf "%s%s%s%s%s\n" "$left" "$prefix" "$gap" "$suffix" "$right"
+}
+
 draw_menu_item() {
   local num=$1
   local label=$2
-  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" "$num" "$label"
+  local width=$((UI_INNER_WIDTH - 6))
+  printf "│  %-2d • %-*s │\n" "$num" "$width" "$label"
 }
 
 # Tab 0: SYSTEM
 show_system_tab() {
-  draw_box_top
   pad_line ""
-  pad_line "${WHITE}SYSTEM INFORMATION & DEPENDENCIES${NC}"
-  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
+  pad_line "SYSTEM INFORMATION & DEPENDENCIES"
+  draw_divider
   draw_menu_item 1 "Check System Dependencies (Docker, Node, Python, curl)"
   draw_menu_item 2 "Install Missing Dependencies"
   draw_menu_item 3 "View System Status & Resources"
@@ -115,32 +149,30 @@ show_system_tab() {
   draw_menu_item 5 "View API Health Status"
   draw_menu_item 6 "View Environment Configuration"
   pad_line ""
-  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_menu_item 0 "Back to Main Menu"
   draw_box_bottom
 }
 
 # Tab 1: SETUP
 show_setup_tab() {
-  draw_box_top
   pad_line ""
-  pad_line "${WHITE}SETUP & CONFIGURATION${NC}"
-  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
+  pad_line "SETUP & CONFIGURATION"
+  draw_divider
   draw_menu_item 1 "Initialize Environment (.env Configuration)"
   draw_menu_item 2 "Verify/Download Required Data Files"
   draw_menu_item 3 "Configure Redis Cache Service"
   draw_menu_item 4 "Edit Environment Variables"
   draw_menu_item 5 "Reset Configuration to Defaults"
   pad_line ""
-  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_menu_item 0 "Back to Main Menu"
   draw_box_bottom
 }
 
 # Tab 2: DEPLOYMENT
 show_deployment_tab() {
-  draw_box_top
   pad_line ""
-  pad_line "${WHITE}DEPLOYMENT & SERVICES${NC}"
-  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
+  pad_line "DEPLOYMENT & SERVICES"
+  draw_divider
   draw_menu_item 1 "Launch Full Stack (Background)"
   draw_menu_item 2 "Launch Full Stack (Foreground - Debug Mode)"
   draw_menu_item 3 "Development Mode (Rebuild Frontend)"
@@ -149,16 +181,15 @@ show_deployment_tab() {
   draw_menu_item 6 "Restart Services"
   draw_menu_item 7 "View Service Logs"
   pad_line ""
-  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_menu_item 0 "Back to Main Menu"
   draw_box_bottom
 }
 
 # Tab 3: DATABASE
 show_database_tab() {
-  draw_box_top
   pad_line ""
-  pad_line "${WHITE}DATABASE & MIGRATIONS${NC}"
-  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
+  pad_line "DATABASE & MIGRATIONS"
+  draw_divider
   draw_menu_item 1 "Run Database Migrations"
   draw_menu_item 2 "Backup Postgres & MongoDB"
   draw_menu_item 3 "View Backup History"
@@ -166,16 +197,15 @@ show_database_tab() {
   draw_menu_item 5 "Connect to Postgres CLI"
   draw_menu_item 6 "Connect to MongoDB CLI"
   pad_line ""
-  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_menu_item 0 "Back to Main Menu"
   draw_box_bottom
 }
 
 # Tab 4: USERS
 show_users_tab() {
-  draw_box_top
   pad_line ""
-  pad_line "${WHITE}USER & ACCOUNT MANAGEMENT${NC}"
-  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
+  pad_line "USER & ACCOUNT MANAGEMENT"
+  draw_divider
   draw_menu_item 1 "View Pending Account Requests"
   draw_menu_item 2 "Approve Account Request"
   draw_menu_item 3 "Deny Account Request"
@@ -184,16 +214,15 @@ show_users_tab() {
   draw_menu_item 6 "Reset Admin Password"
   draw_menu_item 7 "Manage User Permissions"
   pad_line ""
-  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_menu_item 0 "Back to Main Menu"
   draw_box_bottom
 }
 
 # Tab 5: MAINTENANCE
 show_maintenance_tab() {
-  draw_box_top
   pad_line ""
-  pad_line "${WHITE}MAINTENANCE & UTILITIES${NC}"
-  pad_line "${BLUE}──────────────────────────────────────────────────────────────────────────────${NC}"
+  pad_line "MAINTENANCE & UTILITIES"
+  draw_divider
   draw_menu_item 1 "Run Evaluation Harness"
   draw_menu_item 2 "Clean Up Docker Resources"
   draw_menu_item 3 "View Application Logs"
@@ -201,7 +230,7 @@ show_maintenance_tab() {
   draw_menu_item 5 "Rebuild Docker Images"
   draw_menu_item 6 "Reset Everything to Factory Defaults"
   pad_line ""
-  printf "│  ${YELLOW}%-2d${NC} • %-65s │\n" 0 "Back to Main Menu"
+  draw_menu_item 0 "Back to Main Menu"
   draw_box_bottom
 }
 
@@ -509,6 +538,7 @@ main_loop() {
   while true; do
     draw_header
     draw_tabs
+    draw_content_top
     show_current_tab
     echo ""
     read -r -p "Enter a selection: " choice
