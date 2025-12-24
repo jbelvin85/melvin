@@ -249,6 +249,16 @@ ensure_frontend_dependencies() {
 
 build_frontend() {
   if [[ -f "$FRONTEND_DIR/package.json" ]]; then
+    local dist_dir="$FRONTEND_DIR/dist"
+    if [[ -d "$dist_dir" && ! -w "$dist_dir" ]]; then
+      echo "[melvin] Frontend dist directory is not writable; cleaning it up..."
+      rm -rf "$dist_dir" || {
+        echo "[melvin] Failed to remove non-writable dist directory ($dist_dir)."
+        echo "[melvin] Please run: sudo chown -R \"$(whoami)\" \"$FRONTEND_DIR\""
+        exit 1
+      }
+    fi
+    mkdir -p "$dist_dir"
     ensure_frontend_dependencies
     (cd "$FRONTEND_DIR" && npm run build)
   fi
