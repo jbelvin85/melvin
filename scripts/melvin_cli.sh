@@ -6,7 +6,8 @@ set -euo pipefail
 # Navigation: Letters jump to tabs, numbers select menu items
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
-API_URL="http://localhost:8001"
+# Allow overriding API target for remote deployments (set MELVIN_API_URL)
+API_URL="${MELVIN_API_URL:-http://localhost:8001}"
 CURRENT_TAB=0
 
 declare -a TABS=(
