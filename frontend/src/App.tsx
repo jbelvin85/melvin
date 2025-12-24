@@ -516,7 +516,10 @@ function App() {
                   className={`w-full text-left p-3 rounded ${selectedConversation?.id === conversation.id ? 'bg-blue-600/30 border border-blue-500' : 'bg-slate-800'}`}
                 >
                   <p className="font-semibold">{conversation.title}</p>
-                  <p className="text-xs text-slate-400">{new Date(conversation.created_at).toLocaleString()}</p>
+                  <p className="text-xs text-slate-400 flex flex-wrap gap-2 justify-between">
+                    <span>ID #{conversation.id}</span>
+                    <span>{new Date(conversation.created_at).toLocaleString()}</span>
+                  </p>
                 </button>
               ))}
             </div>
