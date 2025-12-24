@@ -81,29 +81,19 @@ draw_tabs() {
   local box_width=$(( ${#active_label} + 4 ))
   if (( box_width < 10 )); then box_width=10; fi
 
-  # Build tab line with active box
-  local top_parts=()
-  local mid_parts=()
+  local line1="  ┌$(printf '─%.0s' $(seq 1 $((box_width-2))))┐"
+  printf "%-${UI_WIDTH}s\n" "$line1"
+
+  local line2=""
   for i in "${!TABS[@]}"; do
     if [[ $i -eq $active_idx ]]; then
-      printf -v top_parts[i] "┌%s┐" "$(printf '─%.0s' $(seq 1 $((box_width-2))))"
-      printf -v mid_parts[i] "│ %-*s │" $((box_width-4)) "$active_label"
+      line2+="│ $(printf '%-*s' $((box_width-4)) "$active_label") │ "
     else
-      top_parts[i]=""
-      mid_parts[i]="[${TAB_KEYS[$i]^}:${TABS[$i]}]"
+      line2+="[${TAB_KEYS[$i]^}:${TABS[$i]}] "
     fi
   done
-
-  local line1="${top_parts[*]}"
-  line1="${line1//  / }"
-  line1=$(printf "%-$(($UI_INNER_WIDTH))s" "$line1")
-
-  local line2="${mid_parts[*]}"
-  line2="${line2//  / }"
-  line2=$(printf "%-$(($UI_INNER_WIDTH))s" "$line2")
-
-  echo -e "${line1}"
-  echo -e "${line2}"
+  line2="${line2% }"
+  printf "%-${UI_WIDTH}s\n" "$line2"
 }
 
 draw_menu_item() {
@@ -520,10 +510,8 @@ main_loop() {
     draw_header
     draw_tabs
     show_current_tab
-    
     echo ""
-    echo -e "${GRAY}Tabs: ${YELLOW}s${NC}=System  ${YELLOW}e${NC}=Setup  ${YELLOW}d${NC}=Deploy  ${YELLOW}b${NC}=Database  ${YELLOW}u${NC}=Users  ${YELLOW}m${NC}=Maint  │  ${YELLOW}1-7${NC}=Select  ${YELLOW}q${NC}=Quit${NC}"
-    read -r choice
+    read -r -p "Enter a selection: " choice
     
     case "${choice,,}" in
       q|quit|exit)
