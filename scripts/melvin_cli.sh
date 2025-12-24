@@ -53,37 +53,62 @@ draw_header() {
 }
 
 draw_tabs() {
-  echo -e "${BLUE}┌─────────────────────────────────────────────────────────────────────────────┐${NC}"
-  local inner_width=77
-  local plain_content=""
-  local colored_content=""
-
+  local labels=()
   for i in "${!TABS[@]}"; do
-    local plain_item="[${TAB_KEYS[$i]^}:${TABS[$i]}]"
-    if [[ $i -eq $CURRENT_TAB ]]; then
-      # Highlight current tab
-      colored_item="${WHITE}${plain_item}${NC}"
-    else
-      # Dim other tabs
-      colored_item="${GRAY}${plain_item}${NC}"
-    fi
-
-    if [[ -n "$plain_content" ]]; then
-      plain_content+=" "
-      colored_content+=" "
-    fi
-    plain_content+="$plain_item"
-    colored_content+="$colored_item"
+    labels+=("[${TAB_KEYS[$i]^}:${TABS[$i]}]")
   done
 
-  # Pad to inner width so end pipes align visually
-  local padding=$((inner_width - ${#plain_content}))
-  if ((padding < 0)); then padding=0; fi
-  local spaces
-  printf -v spaces "%*s" "$padding" ""
+  local active_idx=$CURRENT_TAB
+  local active_label="${TABS[$active_idx]}"
+  local box_inner=$(( ${#active_label} + 2 ))
+  if (( box_inner < 8 )); then box_inner=8; fi
+  local total_pad=$(( box_inner - ${#active_label} ))
+  local left_pad=$(( total_pad / 2 ))
+  local right_pad=$(( total_pad - left_pad ))
+  local box
+  printf -v box "│ %s%s%s │" "$(printf '%*s' "$left_pad" "")" "$active_label" "$(printf '%*s' "$right_pad" "")"
 
-  echo -e "${BLUE}│${NC}${colored_content}${spaces}${BLUE}│${NC}"
-  echo -e "${BLUE}└─────────────────────────────────────────────────────────────────────────────┘${NC}"
+  local tokens=()
+  for i in "${!labels[@]}"; do
+    if [[ $i -eq $active_idx ]]; then
+      tokens+=("$box")
+    else
+      tokens+=("${labels[$i]}")
+    fi
+  done
+
+  local line2="${tokens[*]}"
+  line2="${line2//  / }"
+
+  # compute active start position
+  local active_start=0
+  for i in "${!tokens[@]}"; do
+    if [[ $i -eq $active_idx ]]; then
+      break
+    fi
+    (( active_start += ${#tokens[$i]} + 1 ))
+  done
+  local active_len=${#tokens[$active_idx]}
+
+  # top border over active
+  local line1
+  printf -v line1 "%*s" $active_start ""
+  line1="${line1}┌"
+  line1="${line1}$(printf '%*s' $((active_len-2)) "" | tr ' ' '─')"
+  line1="${line1}┐"
+
+  echo -e "${line1}"
+  echo -e "${line2}"
+
+  TAB_BAR_WIDTH=${#line2}
+}
+
+rule_line() {
+  local width="${TAB_BAR_WIDTH:-77}"
+  local line
+  printf -v line "%*s" "$width" ""
+  line="${line// /─}"
+  echo "$line"
 }
 
 draw_menu_item() {
@@ -95,9 +120,10 @@ draw_menu_item() {
 # Tab 0: SYSTEM
 show_system_tab() {
   echo ""
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
+  local rule; rule=$(rule_line)
+  echo -e "${BLUE}${rule}${NC}"
   echo -e "${WHITE}SYSTEM INFORMATION & DEPENDENCIES${NC}"
-  echo -e "${BLUE}─────────────────────────────────────────────────────────────────────────────${NC}"
+  echo -e "${BLUE}${rule}${NC}"
   echo ""
   
   draw_menu_item 1 "Check System Dependencies (Docker, Node, Python, curl)"
