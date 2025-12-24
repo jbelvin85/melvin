@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Iterable
 
 from .data_loader import CardEntry, datastore
 
@@ -42,7 +42,7 @@ class CardSearchService:
                 return entry
         return None
 
-    def resolve_cards(self, names: List[str]) -> List[CardEntry]:
+    def resolve_cards(self, names: Iterable[str]) -> List[CardEntry]:
         resolved: List[CardEntry] = []
         seen: set[str] = set()
         for raw in names:

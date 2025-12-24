@@ -21,6 +21,7 @@ class Message(BaseModel):
     content: str
     created_at: datetime
     thinking: Optional[List["ThinkingStep"]] = None
+    context: Optional[dict] = None
 
 
 class MessageCreate(BaseModel):

@@ -19,6 +19,7 @@ async def append_message(
     sender: str,
     content: str,
     thinking: Optional[List[dict]] = None,
+    context: Optional[dict] = None,
 ) -> None:
     document = {
         "conversation_id": conversation_id,
@@ -28,6 +29,8 @@ async def append_message(
     }
     if thinking:
         document["thinking"] = thinking
+    if context:
+        document["context"] = context
     await messages_collection.insert_one(document)
 
 
@@ -41,6 +44,7 @@ async def fetch_messages(conversation_id: int) -> List[dict]:
                 "content": doc.get("content", ""),
                 "created_at": doc.get("created_at"),
                 "thinking": doc.get("thinking"),
+                "context": doc.get("context"),
             }
         )
     return results

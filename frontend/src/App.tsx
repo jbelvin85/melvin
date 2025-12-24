@@ -20,6 +20,7 @@ type Message = {
   content: string;
   created_at: string;
   thinking?: ThinkingStep[];
+  context?: MessageContext | null;
 };
 
 type AccountRequest = {
@@ -39,6 +40,16 @@ type ProfileSummary = {
 };
 
 type TabKey = 'chat' | 'tools' | 'profile' | 'settings';
+type MessageContext = {
+  rules?: string;
+  cards?: string;
+  rulings?: string;
+  references?: string;
+  player_guidance?: string;
+  state?: any;
+  tools?: string;
+  external_cards?: string;
+};
 type CardSearchResult = {
   name: string;
   type_line?: string | null;
@@ -94,6 +105,8 @@ function App() {
   const [cardSearchResults, setCardSearchResults] = useState<CardSearchResult[]>([]);
   const [cardSearchLoading, setCardSearchLoading] = useState(false);
   const [cardSearchError, setCardSearchError] = useState<string | null>(null);
+  const [insightOpen, setInsightOpen] = useState(false);
+  const [insightMessage, setInsightMessage] = useState<Message | null>(null);
 
   const [pendingRequests, setPendingRequests] = useState<AccountRequest[]>([]);
   const [adminStatus, setAdminStatus] = useState<string | null>(null);
@@ -121,6 +134,8 @@ function App() {
     setCardSearchResults([]);
     setCardSearchError(null);
     setCardSearchLoading(false);
+    setInsightOpen(false);
+    setInsightMessage(null);
     if (message) {
       setAdminStatus(message);
     } else {
@@ -190,6 +205,8 @@ function App() {
     setCardSearchTerm('');
     setCardSearchResults([]);
     setCardSearchError(null);
+    setInsightOpen(false);
+    setInsightMessage(null);
   }, [selectedConversation?.id]);
 
   useEffect(() => {
@@ -337,6 +354,7 @@ function App() {
         card_names: selectedCards,
       }, authHeaders);
       setMessages(prev => [...prev, response.data]);
+      setInsightMessage(response.data);
       setThinkingPreview(response.data.thinking ?? []);
     } catch (error) {
       if (!handleAuthError(error, 'Failed to send message')) {
@@ -531,6 +549,17 @@ function App() {
                 <div key={idx} className={`p-3 rounded ${message.sender === 'user' ? 'bg-blue-900/40' : 'bg-slate-800'}`}>
                   <p className="text-sm text-slate-400 mb-1">{message.sender} — {new Date(message.created_at).toLocaleTimeString()}</p>
                   <p>{message.content}</p>
+                  {message.sender !== 'user' && message.context && (
+                    <button
+                      className="mt-2 text-xs text-blue-300 hover:text-blue-200 underline"
+                      onClick={() => {
+                        setInsightMessage(message);
+                        setInsightOpen(true);
+                      }}
+                    >
+                      Inspect context & reasoning
+                    </button>
+                  )}
                   {message.sender !== 'user' && message.thinking && message.thinking.length > 0 && (
                     <details className="mt-2 text-xs text-slate-300/80">
                       <summary className="cursor-pointer text-blue-200">View Melvin&apos;s reasoning</summary>
@@ -562,7 +591,7 @@ function App() {
             </div>
             <div className="border-t border-slate-800 pt-3 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm text-slate-400">
-                <span>Give Melvin optional card context.</span>
+                <span>Give Melvin optional card context. You can also type card names inside brackets, e.g. [Sol Ring].</span>
                 <button className="text-blue-300 hover:text-blue-200" onClick={() => setCardPickerOpen((prev) => !prev)}>
                   {cardPickerOpen ? 'Close card selector' : 'Add cards for relevance'}
                 </button>
@@ -746,6 +775,73 @@ function App() {
             </section>
           )}
         </section>
+      )}
+
+      {insightOpen && insightMessage && (
+        <div className="fixed inset-0 z-40">
+          <button className="absolute inset-0 bg-black/40" onClick={() => { setInsightOpen(false); setInsightMessage(null); }} aria-label="Close insights panel" />
+          <div className="absolute right-0 top-0 h-full w-full max-w-md bg-slate-950 text-slate-100 shadow-2xl p-6 overflow-y-auto">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-blue-300">Conversation insights</p>
+                <h2 className="text-2xl font-bold">Under the hood</h2>
+                <p className="text-slate-400 text-sm">Inspect Melvin&apos;s reasoning chain and the exact context fed to the model.</p>
+              </div>
+              <button className="text-sm text-slate-400 hover:text-white" onClick={() => { setInsightOpen(false); setInsightMessage(null); }}>
+                Close
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="bg-slate-900/60 rounded-lg p-4">
+                <p className="text-sm text-slate-400 mb-2">Response snapshot</p>
+                <p className="text-slate-200">{insightMessage.content}</p>
+                <p className="text-xs text-slate-500 mt-2">{new Date(insightMessage.created_at).toLocaleString()}</p>
+              </div>
+              {insightMessage.thinking && insightMessage.thinking.length > 0 && (
+                <div className="bg-slate-900/60 rounded-lg p-4 space-y-2">
+                  <p className="font-semibold text-white">Reasoning steps</p>
+                  <ul className="space-y-2 text-sm">
+                    {insightMessage.thinking.map((step, idx) => (
+                      <li key={`${step.label}-${idx}`} className="border-l border-blue-500/40 pl-3">
+                        <p className="text-slate-200 font-semibold">{step.label}</p>
+                        <p className="text-slate-400">{step.detail}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {insightMessage.context && (
+                <div className="space-y-3">
+                  {[
+                    { label: 'Rules context', key: 'rules' },
+                    { label: 'Cards context', key: 'cards' },
+                    { label: 'Rulings context', key: 'rulings' },
+                    { label: 'Reference guides', key: 'references' },
+                    { label: 'Player guidance', key: 'player_guidance' },
+                    { label: 'State snapshot', key: 'state' },
+                    { label: 'Rule-engine tools', key: 'tools' },
+                    { label: 'External card notes', key: 'external_cards' },
+                  ].map((section) => {
+                    const value = (insightMessage.context as Record<string, unknown>)[section.key];
+                    const formatted = typeof value === 'string'
+                      ? value.trim()
+                      : value
+                        ? JSON.stringify(value, null, 2)
+                        : '';
+                    return (
+                      <div key={section.key} className="bg-slate-900/40 rounded-lg p-3">
+                        <p className="text-xs uppercase tracking-wide text-slate-400">{section.label}</p>
+                        <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-200 max-h-48 overflow-y-auto">
+                          {formatted || 'No data included for this section.'}
+                        </pre>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

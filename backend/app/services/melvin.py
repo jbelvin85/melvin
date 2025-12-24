@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, List, Tuple, Dict
+import re
 
 import threading
 
@@ -76,7 +77,7 @@ Question: {question}
         return f"Player Profile Guidance: {guidance}" if guidance else ""
 
     def answer_question(self, question: str, user: Optional[User] = None) -> str:
-        response_text, _ = self.answer_question_with_details(question, user=user)
+        response_text, _, _ = self.answer_question_with_details(question, user=user)
         return response_text
 
     def _summarize_doc(self, label: str, docs: List) -> Optional[Dict[str, str]]:
@@ -95,6 +96,15 @@ Question: {question}
             parts.append(f"Oracle: {entry.oracle_text}")
         return "\n".join(parts)
 
+    def _extract_tagged_cards(self, text: str) -> List[str]:
+        pattern = re.compile(r"\[([^\[\]]{2,120})\]")
+        results = []
+        for match in pattern.findall(text or ""):
+            candidate = match.strip()
+            if candidate:
+                results.append(candidate)
+        return results
+
     def answer_question_with_details(
         self,
         question: str,
@@ -102,8 +112,8 @@ Question: {question}
         tone: Optional[str] = None,
         detail_level: Optional[str] = None,
         selected_cards: Optional[List[str]] = None,
-    ) -> Tuple[str, List[Dict[str, str]]]:
-        selected_cards = selected_cards or []
+    ) -> Tuple[str, List[Dict[str, str]], Dict[str, str]]:
+        explicit_cards = selected_cards or []
         thinking: List[Dict[str, str]] = []
         thinking.append({"label": "Question received", "detail": question.strip()})
         style_notes: List[str] = []
@@ -160,13 +170,23 @@ Question: {question}
 
         payload = {"question": question}
         resolved_cards: List[CardEntry] = []
-        if selected_cards:
-            resolved_cards = card_search_service.resolve_cards(selected_cards)
+        if explicit_cards:
+            resolved_cards = card_search_service.resolve_cards(explicit_cards)
             if resolved_cards:
                 manual_sections = [self._format_card_entry(entry) for entry in resolved_cards]
                 external_card_sections.append("User-selected cards:\n" + "\n\n".join(manual_sections))
                 names = ", ".join(card.name for card in resolved_cards if card.name)
                 thinking.append({"label": "Card context", "detail": f"Added user card references: {names}"})
+
+        tagged_names = self._extract_tagged_cards(question)
+        if tagged_names:
+            tagged_entries = card_search_service.resolve_cards(tagged_names)
+            if tagged_entries:
+                resolved_cards.extend([entry for entry in tagged_entries if entry not in resolved_cards])
+                tag_sections = [self._format_card_entry(entry) for entry in tagged_entries]
+                external_card_sections.append("Tagged cards:\n" + "\n\n".join(tag_sections))
+                names = ", ".join(card.name for card in tagged_entries if card.name)
+                thinking.append({"label": "Card context", "detail": f"Parsed tagged cards: {names}"})
 
         if scryfall_cards_context:
             external_card_sections.append(f"Scryfall autocomplete:\n{scryfall_cards_context}")
@@ -250,12 +270,22 @@ Question: {question}
             thinking.append(summary)
 
         prompt_input = self._prepare_prompt_input(payload)
+        context_snapshot = {
+            "rules": prompt_input.get("rules_context", ""),
+            "cards": prompt_input.get("cards_context", ""),
+            "rulings": prompt_input.get("rulings_context", ""),
+            "references": prompt_input.get("reference_context", ""),
+            "player_guidance": prompt_input.get("player_guidance", ""),
+            "state": payload.get("state_context") or "",
+            "tools": payload.get("tools_context") or "",
+            "external_cards": payload.get("external_cards_context") or "",
+        }
         prompt_value = self.prompt.format_prompt(**prompt_input)
         llm_response = self.llm.invoke(prompt_value.to_string())
         answer_text = llm_response if isinstance(llm_response, str) else StrOutputParser().invoke(llm_response)
         answer_text = answer_text.strip()
         thinking.append({"label": "Final synthesis", "detail": "Generated response with llama3 via Ollama."})
-        return answer_text, thinking
+        return answer_text, thinking, context_snapshot
 
     def _prepare_prompt_input(self, payload: dict) -> dict:
         def format_docs(value):
