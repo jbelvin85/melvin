@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import ScryfallSearch from './components/ScryfallSearch';
 import BoardBuilder from './components/BoardBuilder';
 
@@ -37,6 +37,7 @@ function App() {
   const [requestUsername, setRequestUsername] = useState('');
   const [requestPassword, setRequestPassword] = useState('');
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
+  const [authView, setAuthView] = useState<'login' | 'request'>('login');
 
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -53,6 +54,40 @@ function App() {
 
   const [pendingRequests, setPendingRequests] = useState<AccountRequest[]>([]);
   const [adminStatus, setAdminStatus] = useState<string | null>(null);
+
+  type AuthShellProps = {
+    children: ReactNode;
+    onRequestLink?: () => void;
+    onLoginLink?: () => void;
+    heading: string;
+    subheading?: string;
+    ctaLabel?: string;
+  };
+
+  const AuthShell = ({ children, heading, subheading, onRequestLink, onLoginLink, ctaLabel }: AuthShellProps) => (
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-50">
+      <div className="max-w-5xl mx-auto px-6 py-10 space-y-12">
+        <header className="flex items-center justify-between">
+          <div>
+            <p className="text-sm tracking-wide text-blue-400">MELVIN</p>
+            <h1 className="text-3xl font-bold text-white">{heading}</h1>
+            {subheading && <p className="text-slate-400 mt-2">{subheading}</p>}
+          </div>
+          {onRequestLink && (
+            <button onClick={onRequestLink} className="rounded-full border border-blue-500 px-4 py-2 text-sm hover:bg-blue-500/10 transition">
+              {ctaLabel ?? 'Request Access'}
+            </button>
+          )}
+          {onLoginLink && (
+            <button onClick={onLoginLink} className="rounded-full border border-blue-500 px-4 py-2 text-sm hover:bg-blue-500/10 transition">
+              Back to Login
+            </button>
+          )}
+        </header>
+        {children}
+      </div>
+    </div>
+  );
 
   useEffect(() => {
     if (token) {
@@ -186,7 +221,90 @@ function App() {
     setConversations([]);
     setMessages([]);
     setSelectedConversation(null);
+    setAuthView('login');
   };
+
+  if (!token) {
+    if (authView === 'request') {
+      return (
+        <AuthShell
+          heading="Request an account"
+          subheading="Tell us who you are and we’ll notify an administrator to approve your access."
+          onLoginLink={() => setAuthView('login')}
+        >
+          <div className="grid md:grid-cols-2 gap-8 items-start">
+            <div className="space-y-4">
+              <h2 className="text-2xl font-semibold">Your credentials</h2>
+              <p className="text-slate-400">
+                Choose a username and password. After approval, you’ll use these to sign in.
+              </p>
+              <div className="space-y-2">
+                <label className="text-sm text-slate-300">Username</label>
+                <input className="w-full p-3 rounded bg-slate-900 border border-slate-800" value={requestUsername} onChange={(e) => setRequestUsername(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-slate-300">Password</label>
+                <input type="password" className="w-full p-3 rounded bg-slate-900 border border-slate-800" value={requestPassword} onChange={(e) => setRequestPassword(e.target.value)} />
+              </div>
+              <button className="mt-2 w-full bg-blue-600 hover:bg-blue-500 transition px-4 py-3 rounded font-semibold" onClick={handleRequestAccount}>
+                Submit request
+              </button>
+              {requestStatus && <p className="text-sm text-green-400">{requestStatus}</p>}
+            </div>
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 space-y-4">
+              <h3 className="text-lg font-semibold">What happens next?</h3>
+              <ul className="space-y-3 text-slate-300 text-sm">
+                <li>• An admin reviews your request.</li>
+                <li>• Once approved, log in from the landing page.</li>
+                <li>• Need to adjust details? Submit a new request.</li>
+              </ul>
+              <div className="text-xs text-slate-500">
+                Questions? Reach out to your Melvin administrator.
+              </div>
+            </div>
+          </div>
+        </AuthShell>
+      );
+    }
+
+    return (
+      <AuthShell
+        heading="Magic: the Gathering AI Assistant"
+        subheading="Ask rules questions, explore rulings, and collaborate with Melvin."
+        onRequestLink={() => setAuthView('request')}
+        ctaLabel="Request an account"
+      >
+        <div className="grid md:grid-cols-2 gap-10 items-start">
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-200 px-3 py-1 rounded-full text-xs font-semibold">
+              <span>Play smarter</span>
+            </div>
+            <h2 className="text-3xl font-bold text-white leading-tight">Sign in to chat with Melvin</h2>
+            <p className="text-slate-400 max-w-xl">
+              Log in to manage conversations, ask for rulings, and share boards. Don&apos;t have access yet? Request an account and we&apos;ll approve you shortly.
+            </p>
+          </div>
+          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+            <h3 className="text-xl font-semibold">Login</h3>
+            <div className="space-y-2">
+              <label className="text-sm text-slate-300">Username</label>
+              <input className="w-full p-3 rounded bg-slate-900 border border-slate-800" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-slate-300">Password</label>
+              <input type="password" className="w-full p-3 rounded bg-slate-900 border border-slate-800" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
+            </div>
+            <button className="w-full bg-green-600 hover:bg-green-500 transition px-4 py-3 rounded font-semibold" onClick={handleLogin}>
+              Enter Melvin
+            </button>
+            <button className="w-full text-sm text-blue-300 underline" onClick={() => setAuthView('request')}>
+              Need an account? Request access
+            </button>
+          </div>
+        </div>
+      </AuthShell>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto py-10 px-4 space-y-8">
