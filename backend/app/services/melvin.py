@@ -27,10 +27,12 @@ class MelvinService:
         self.rules_db = Chroma(persist_directory=str(self.vectorstore_path / "rules"), embedding_function=self.embedding_function)
         self.cards_db = Chroma(persist_directory=str(self.vectorstore_path / "cards"), embedding_function=self.embedding_function)
         self.rulings_db = Chroma(persist_directory=str(self.vectorstore_path / "rulings"), embedding_function=self.embedding_function)
+        self.reference_db = self._load_vector_store("reference")
 
         self.rules_retriever = self.rules_db.as_retriever()
         self.cards_retriever = self.cards_db.as_retriever()
         self.rulings_retriever = self.rulings_db.as_retriever()
+        self.reference_retriever = self.reference_db.as_retriever() if self.reference_db else None
 
         self.llm = Ollama(model="llama3", base_url="http://ollama:11434")
         self.prompt = ChatPromptTemplate.from_template(
@@ -38,6 +40,7 @@ class MelvinService:
 Rules: {rules_context}
 Cards: {cards_context}
 Rulings: {rulings_context}
+Commander & Intro Guides: {reference_context}
 {player_guidance}
 
 Question: {question}
@@ -46,6 +49,12 @@ Question: {question}
     def _ensure_loaded(self) -> None:
         if not datastore.rules or not datastore.cards or not datastore.rulings:
             datastore.load()
+
+    def _load_vector_store(self, name: str) -> Optional[Chroma]:
+        target = self.vectorstore_path / name
+        if not target.exists():
+            return None
+        return Chroma(persist_directory=str(target), embedding_function=self.embedding_function)
 
     def _build_player_guidance(self, user: Optional[User] = None) -> str:
         """
@@ -77,9 +86,22 @@ Question: {question}
             snippet = f"{snippet[:197]}..."
         return {"label": label, "detail": f"Top excerpt: {snippet}"}
 
-    def answer_question_with_details(self, question: str, user: Optional[User] = None) -> Tuple[str, List[Dict[str, str]]]:
+    def answer_question_with_details(
+        self,
+        question: str,
+        user: Optional[User] = None,
+        tone: Optional[str] = None,
+        detail_level: Optional[str] = None,
+    ) -> Tuple[str, List[Dict[str, str]]]:
         thinking: List[Dict[str, str]] = []
         thinking.append({"label": "Question received", "detail": question.strip()})
+        style_notes: List[str] = []
+        if tone:
+            style_notes.append(f"Preferred tone: {tone}")
+        if detail_level:
+            style_notes.append(f"Detail level: {detail_level}")
+        if style_notes:
+            thinking.append({"label": "User preference", "detail": " | ".join(style_notes)})
 
         # Try to detect a card name via Scryfall autocomplete on the whole question.
         # If we get a suggestion, fetch the named card and include a short summary
@@ -169,6 +191,9 @@ Question: {question}
         
         # Add player guidance based on profile
         player_guidance = self._build_player_guidance(user)
+        if style_notes:
+            preference_line = " ".join(style_notes)
+            player_guidance = f"{player_guidance}\nConversation preferences: {preference_line}".strip()
         payload["player_guidance"] = player_guidance
         if player_guidance:
             thinking.append({"label": "Player profile", "detail": player_guidance})
@@ -176,10 +201,14 @@ Question: {question}
         rules_docs = self.rules_retriever.get_relevant_documents(question)
         cards_docs = self.cards_retriever.get_relevant_documents(question)
         rulings_docs = self.rulings_retriever.get_relevant_documents(question)
+        reference_docs: List = []
+        if self.reference_retriever:
+            reference_docs = self.reference_retriever.get_relevant_documents(question)
 
         payload["rules_context"] = rules_docs
         payload["cards_context"] = cards_docs
         payload["rulings_context"] = rulings_docs
+        payload["reference_context"] = reference_docs
 
         summary = self._summarize_doc("Rules context", rules_docs)
         if summary:
@@ -188,6 +217,9 @@ Question: {question}
         if summary:
             thinking.append(summary)
         summary = self._summarize_doc("Rulings reference", rulings_docs)
+        if summary:
+            thinking.append(summary)
+        summary = self._summarize_doc("Commander reference", reference_docs)
         if summary:
             thinking.append(summary)
 
@@ -221,6 +253,7 @@ Question: {question}
             cards_text = f"{cards_text}\n\nExternal Card Info:\n{extra_cards}".strip()
         merged["cards_context"] = cards_text
         merged["rulings_context"] = format_docs(payload.get("rulings_context"))
+        merged["reference_context"] = format_docs(payload.get("reference_context"))
         merged["player_guidance"] = payload.get("player_guidance", "")
         return merged
 

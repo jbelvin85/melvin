@@ -23,7 +23,13 @@ interface AssessmentResult {
   preference_breakdown: Record<string, number>;
 }
 
-export const PsychographicAssessment: React.FC = () => {
+interface AssessmentProps {
+  authToken: string | null;
+  onAssessmentComplete?: () => void;
+  onClose?: () => void;
+}
+
+export const PsychographicAssessment: React.FC<AssessmentProps> = ({ authToken, onAssessmentComplete, onClose }) => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
@@ -70,7 +76,7 @@ export const PsychographicAssessment: React.FC = () => {
     setError(null);
 
     try {
-      const token = localStorage.getItem('token'); // Adjust based on auth
+      const token = authToken ?? localStorage.getItem('melvin_token');
       const response = await fetch('/api/profiles/assess', {
         method: 'POST',
         headers: {
@@ -91,6 +97,7 @@ export const PsychographicAssessment: React.FC = () => {
 
       const resultData = await response.json();
       setResult(resultData);
+      onAssessmentComplete?.();
     } catch (err) {
       setError('Failed to submit assessment');
     } finally {
@@ -103,7 +110,16 @@ export const PsychographicAssessment: React.FC = () => {
   }
 
   if (result) {
-    return <ResultDisplay result={result} />;
+    return (
+      <ResultDisplay
+        result={result}
+        onRetake={() => {
+          setResult(null);
+          setAnswers({});
+        }}
+        onClose={onClose}
+      />
+    );
   }
 
   return (
@@ -172,9 +188,11 @@ export const PsychographicAssessment: React.FC = () => {
 
 interface ResultDisplayProps {
   result: AssessmentResult;
+  onRetake: () => void;
+  onClose?: () => void;
 }
 
-const ResultDisplay: React.FC<ResultDisplayProps> = ({ result }) => {
+const ResultDisplay: React.FC<ResultDisplayProps> = ({ result, onRetake, onClose }) => {
   return (
     <div className="max-w-2xl mx-auto p-8 bg-white rounded-lg shadow">
       <div className="text-center mb-8">
@@ -235,17 +253,19 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ result }) => {
 
       <div className="flex gap-4">
         <button
-          onClick={() => window.location.reload()}
+          onClick={onRetake}
           className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition"
         >
           Retake Assessment
         </button>
-        <button
-          onClick={() => window.history.back()}
-          className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition"
-        >
-          Continue to Game
-        </button>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition"
+          >
+            Close
+          </button>
+        )}
       </div>
     </div>
   );

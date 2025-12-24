@@ -26,6 +26,8 @@ class Message(BaseModel):
 
 class MessageCreate(BaseModel):
     question: str = Field(..., min_length=3)
+    tone: str | None = None
+    detail_level: str | None = None
 
 
 class ConversationDetail(BaseModel):

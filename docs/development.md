@@ -56,6 +56,7 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 - Keep original dumps under `data/raw/` (local-only; gitignored due to size). Treat derived embeddings as build artifacts (ignored by git, reproduced via scripts under `data/processed/`).
 - `scripts/melvin.sh launch` calls the Scryfall bulk API to refresh Oracle/rulings dumps automatically; if offline, drop those files into `data/raw/` manually.
 - The setup script also ensures the configured Ollama model (`OLLAMA_MODEL`) is available by invoking `ollama pull` inside the Ollama container before starting the API.
+- Curated teaching/reference blurbs (e.g., “How to Play MTG,” Commander rules digest) live under `data/reference/` and are included in the ingestion run so Melvin can cite them alongside the Comprehensive Rules.
 - Implement chunk metadata linking back to source rule IDs and card identifiers.
 - Cache Scryfall lookups to respect rate limits.
 

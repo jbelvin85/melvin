@@ -1,7 +1,8 @@
 import axios from 'axios';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ScryfallSearch from './components/ScryfallSearch';
 import BoardBuilder from './components/BoardBuilder';
+import PsychographicAssessment from './components/PsychographicAssessment';
 
 type Conversation = {
   id: number;
@@ -28,6 +29,17 @@ type AccountRequest = {
   created_at: string;
 };
 
+type ProfileSummary = {
+  primary_type_label: string;
+  primary_score: number;
+  description: string;
+  play_style_summary: string;
+  conversation_guidance: string;
+  preference_breakdown: Record<string, number>;
+};
+
+type TabKey = 'chat' | 'tools' | 'profile' | 'settings';
+
 const api = axios.create({ baseURL: '/api' });
 
 const decodeToken = (token: string) => {
@@ -40,6 +52,13 @@ const decodeToken = (token: string) => {
 };
 
 function App() {
+  const tokenStorageKey = 'melvin_token';
+  const tabNav: { key: TabKey; label: string }[] = [
+    { key: 'chat', label: 'Chat' },
+    { key: 'tools', label: 'Tools' },
+    { key: 'profile', label: 'Profile' },
+    { key: 'settings', label: 'Settings' },
+  ];
   const [requestUsername, setRequestUsername] = useState('');
   const [requestPassword, setRequestPassword] = useState('');
   const [requestStatus, setRequestStatus] = useState<string | null>(null);
@@ -47,8 +66,9 @@ function App() {
 
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('melvin_token'));
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem(tokenStorageKey));
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userName, setUserName] = useState<string | null>(null);
 
   const authHeaders = useMemo(() => ({ headers: { Authorization: token ? `Bearer ${token}` : '' } }), [token]);
 
@@ -59,9 +79,18 @@ function App() {
   const [question, setQuestion] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingPreview, setThinkingPreview] = useState<ThinkingStep[]>([]);
+  const [activeTab, setActiveTab] = useState<TabKey>('chat');
+  const [tonePreference, setTonePreference] = useState('Helpful and friendly');
+  const [detailPreference, setDetailPreference] = useState('Balanced');
 
   const [pendingRequests, setPendingRequests] = useState<AccountRequest[]>([]);
   const [adminStatus, setAdminStatus] = useState<string | null>(null);
+  const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [showAssessment, setShowAssessment] = useState(false);
+
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   type AuthShellProps = {
     children: ReactNode;
@@ -97,22 +126,25 @@ function App() {
     </div>
   );
 
-  const resetSession = (message?: string) => {
+  const resetSession = useCallback((message?: string) => {
     setToken(null);
     setIsAdmin(false);
-    localStorage.removeItem('melvin_token');
+    setUserName(null);
+    localStorage.removeItem(tokenStorageKey);
     setConversations([]);
     setMessages([]);
     setSelectedConversation(null);
     setPendingRequests([]);
+    setProfileSummary(null);
+    setActiveTab('chat');
     if (message) {
       setAdminStatus(message);
     } else {
       setAdminStatus(null);
     }
-  };
+  }, [tokenStorageKey]);
 
-  const handleAuthError = (error: unknown, fallbackMessage?: string) => {
+  const handleAuthError = useCallback((error: unknown, fallbackMessage?: string) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
       resetSession('Please log in again to continue.');
       return true;
@@ -122,18 +154,56 @@ function App() {
     }
     console.error(error);
     return false;
-  };
+  }, [resetSession]);
+
+  const loadProfileSummary = useCallback(async () => {
+    if (!token) return;
+    setProfileLoading(true);
+    setProfileError(null);
+    try {
+      const response = await api.get<ProfileSummary>('/profiles/me/summary', authHeaders);
+      setProfileSummary(response.data);
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        setProfileSummary(null);
+      } else if (!handleAuthError(error)) {
+        setProfileError('Failed to load profile summary');
+      }
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [authHeaders, handleAuthError, token]);
 
   useEffect(() => {
     if (token) {
       const payload = decodeToken(token);
       setIsAdmin(payload?.admin ?? false);
+      setUserName(payload?.username ?? null);
       loadConversations();
       if (payload?.admin) {
         loadPendingRequests();
       }
+    } else {
+      setUserName(null);
     }
   }, [token]);
+
+  useEffect(() => {
+    if (token && activeTab === 'profile') {
+      loadProfileSummary();
+    }
+  }, [token, activeTab, loadProfileSummary]);
+
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isThinking, activeTab]);
+
+  const handleAssessmentComplete = async () => {
+    await loadProfileSummary();
+    setShowAssessment(false);
+  };
 
   const loadConversations = async () => {
     if (!token) return;
@@ -180,7 +250,7 @@ function App() {
       });
       const receivedToken = response.data.access_token;
       setToken(receivedToken);
-      localStorage.setItem('melvin_token', receivedToken);
+      localStorage.setItem(tokenStorageKey, receivedToken);
       setLoginPassword('');
       setLoginUsername('');
       loadConversations();
@@ -214,6 +284,8 @@ function App() {
     try {
       const response = await api.post(`/conversations/${convoId}/chat`, {
         question: userMessage.content,
+        tone: tonePreference,
+        detail_level: detailPreference,
       }, authHeaders);
       setMessages(prev => [...prev, response.data]);
       setThinkingPreview(response.data.thinking ?? []);
@@ -346,58 +418,64 @@ function App() {
     );
   }
 
+  const toneOptions = [
+    'Helpful and friendly',
+    'Neutral and concise',
+    'Judge-like and formal',
+    'Energetic coach',
+  ];
+  const detailOptions = ['Balanced', 'High detail', 'Quick summary'];
+  const formatPreferenceLabel = (key: string) => {
+    if (key === 'big_plays') return 'Big Plays';
+    if (key === 'originality') return 'Originality';
+    if (key === 'optimization') return 'Optimization';
+    if (key === 'mechanics') return 'Mechanical Curiosity';
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  };
+
   return (
     <div className="max-w-6xl mx-auto py-10 px-4 space-y-8">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Melvin</h1>
           <p className="text-slate-400">Magic: The Gathering rules assistant</p>
         </div>
-        {token && (
+        <div className="flex items-center gap-4">
+          <div className="text-right text-sm text-slate-300">
+            <p>
+              Signed in as{' '}
+              <span className="font-semibold text-white">{userName ?? 'Planeswalker'}</span>
+            </p>
+            <p className="text-slate-500">Tone: {tonePreference} · Detail: {detailPreference}</p>
+          </div>
           <button className="bg-red-600 px-4 py-2 rounded" onClick={handleLogout}>
             Logout
           </button>
-        )}
+        </div>
       </header>
 
-      {!token && (
-        <div className="grid md:grid-cols-2 gap-6">
-          <section className="bg-slate-900 p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Request an Account</h2>
-            <p className="text-sm text-slate-400 mb-4">
-              Submit your desired username and password. An administrator will review your request; try logging in later to check whether you&apos;ve been approved.
-            </p>
-            <label className="block mb-2 text-sm">Username</label>
-            <input className="w-full p-2 rounded bg-slate-800" value={requestUsername} onChange={(e) => setRequestUsername(e.target.value)} />
-            <label className="block mb-2 mt-4 text-sm">Password</label>
-            <input type="password" className="w-full p-2 rounded bg-slate-800" value={requestPassword} onChange={(e) => setRequestPassword(e.target.value)} />
-            <button className="mt-4 bg-blue-600 px-4 py-2 rounded" onClick={handleRequestAccount}>
-              Submit Request
-            </button>
-            {requestStatus && <p className="text-sm text-green-400 mt-3">{requestStatus}</p>}
-          </section>
+      <nav className="flex flex-wrap gap-2 bg-slate-900/60 border border-slate-800 rounded-full p-1">
+        {tabNav.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2 rounded-full text-sm transition ${
+              activeTab === tab.key ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
 
-          <section className="bg-slate-900 p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Login</h2>
-            <label className="block mb-2 text-sm">Username</label>
-            <input className="w-full p-2 rounded bg-slate-800" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} />
-            <label className="block mb-2 mt-4 text-sm">Password</label>
-            <input type="password" className="w-full p-2 rounded bg-slate-800" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
-            <button className="mt-4 bg-green-600 px-4 py-2 rounded" onClick={handleLogin}>
-              Login
-            </button>
-          </section>
-        </div>
-      )}
-
-      {token && (
+      {activeTab === 'chat' && (
         <div className="grid md:grid-cols-3 gap-6">
-          <section className="bg-slate-900 p-4 rounded-lg shadow md:col-span-1">
+          <section className="bg-slate-900 p-4 rounded-lg shadow md:col-span-1 flex flex-col">
             <div className="flex items-center gap-2 mb-4">
               <input className="flex-1 p-2 rounded bg-slate-800" value={newConversationTitle} onChange={(e) => setNewConversationTitle(e.target.value)} />
               <button className="bg-blue-600 px-3 py-2 rounded" onClick={handleCreateConversation}>+</button>
             </div>
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
               {conversations.map((conversation) => (
                 <button
                   key={conversation.id}
@@ -412,7 +490,7 @@ function App() {
           </section>
 
           <section className="bg-slate-900 p-4 rounded-lg shadow md:col-span-2 flex flex-col">
-            <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+            <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-2 max-h-[60vh]">
               {messages.map((message, idx) => (
                 <div key={idx} className={`p-3 rounded ${message.sender === 'user' ? 'bg-blue-900/40' : 'bg-slate-800'}`}>
                   <p className="text-sm text-slate-400 mb-1">{message.sender} — {new Date(message.created_at).toLocaleTimeString()}</p>
@@ -444,6 +522,7 @@ function App() {
                   </ul>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
             <div className="flex gap-3">
               <textarea className="flex-1 rounded bg-slate-800 p-3" rows={3} placeholder="Ask Melvin..." value={question} onChange={(e) => setQuestion(e.target.value)} />
@@ -455,33 +534,126 @@ function App() {
         </div>
       )}
 
-      {token && isAdmin && (
-        <section className="bg-slate-900 p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Admin Queue</h2>
-            <button className="text-sm underline" onClick={loadPendingRequests}>Refresh</button>
+      {activeTab === 'tools' && (
+        <section className="space-y-6">
+          <div className="bg-slate-900 p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-2">Tools hub</h2>
+            <p className="text-slate-400">Search cards, sketch boards, and test ideas alongside your conversations.</p>
           </div>
-          {adminStatus && <p className="text-sm text-slate-300 mb-4">{adminStatus}</p>}
-          <div className="space-y-3">
-            {pendingRequests.length === 0 && <p className="text-slate-400">No pending requests</p>}
-            {pendingRequests.map((request) => (
-              <div key={request.id} className="bg-slate-800 p-4 rounded flex items-center justify-between">
-                <div>
-                  <p className="font-semibold">{request.username}</p>
-                  <p className="text-xs text-slate-400">Requested {new Date(request.created_at).toLocaleString()}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button className="bg-green-600 px-3 py-1 rounded" onClick={() => handleApprove(request.id)}>Approve</button>
-                  <button className="bg-red-600 px-3 py-1 rounded" onClick={() => handleDeny(request.id)}>Deny</button>
-                </div>
-              </div>
-            ))}
+          <div className="grid gap-6 md:grid-cols-2">
+            <ScryfallSearch />
+            <BoardBuilder />
           </div>
         </section>
       )}
 
-      <ScryfallSearch />
-      <BoardBuilder />
+      {activeTab === 'profile' && (
+        <section className="bg-slate-900 p-6 rounded-lg shadow space-y-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Your Player Profile</h2>
+              <p className="text-slate-400">Share how you like to play so Melvin can tailor explanations and suggestions.</p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={() => setShowAssessment(true)}>
+                {profileSummary ? 'Retake Assessment' : 'Start Assessment'}
+              </button>
+              <button className="px-4 py-2 rounded border border-slate-600 text-slate-200" onClick={loadProfileSummary}>
+                Refresh Summary
+              </button>
+            </div>
+          </div>
+          {profileLoading && <p className="text-slate-300">Loading your profile summary...</p>}
+          {profileError && <p className="text-red-400">{profileError}</p>}
+          {!profileLoading && !profileSummary && !profileError && (
+            <p className="text-slate-300">You haven&apos;t completed the assessment yet. Click &quot;Start Assessment&quot; to begin.</p>
+          )}
+          {profileSummary && (
+            <div className="space-y-4">
+              <div className="bg-slate-800 p-4 rounded-lg space-y-2">
+                <p className="text-lg font-semibold text-white">{profileSummary.primary_type_label}</p>
+                <p className="text-slate-300">{Math.round(profileSummary.primary_score * 100)}% alignment</p>
+                <p className="text-slate-200">{profileSummary.description}</p>
+                <p className="text-sm text-slate-400">{profileSummary.play_style_summary}</p>
+              </div>
+              <div className="bg-slate-800 p-4 rounded-lg space-y-2">
+                <h3 className="font-semibold text-white">How Melvin will respond</h3>
+                <p className="text-slate-300">{profileSummary.conversation_guidance}</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {Object.entries(profileSummary.preference_breakdown).map(([key, value]) => (
+                  <div key={key} className="bg-slate-900/60 p-4 rounded-lg">
+                    <div className="flex items-center justify-between text-sm text-slate-300 mb-2">
+                      <span>{formatPreferenceLabel(key)}</span>
+                      <span>{Math.round(value * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-slate-800 h-2 rounded">
+                      <div className="bg-blue-500 h-2 rounded" style={{ width: `${value * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {showAssessment && (
+            <div className="border border-slate-700 rounded-lg overflow-hidden">
+              <PsychographicAssessment authToken={token} onAssessmentComplete={handleAssessmentComplete} onClose={() => setShowAssessment(false)} />
+            </div>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'settings' && (
+        <section className="space-y-6">
+          <div className="bg-slate-900 p-6 rounded-lg shadow space-y-4">
+            <h2 className="text-xl font-semibold">Conversation Preferences</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-slate-300">
+                Melvin&apos;s tone
+                <select className="p-3 rounded bg-slate-800 text-white" value={tonePreference} onChange={(e) => setTonePreference(e.target.value)}>
+                  {toneOptions.map((tone) => (
+                    <option key={tone} value={tone}>{tone}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-2 text-sm text-slate-300">
+                Detail level
+                <select className="p-3 rounded bg-slate-800 text-white" value={detailPreference} onChange={(e) => setDetailPreference(e.target.value)}>
+                  {detailOptions.map((detail) => (
+                    <option key={detail} value={detail}>{detail}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p className="text-sm text-slate-400">These preferences are attached to your future Melvin conversations.</p>
+          </div>
+
+          {isAdmin && (
+            <section className="bg-slate-900 p-6 rounded-lg shadow">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">Admin Queue</h2>
+                <button className="text-sm underline" onClick={loadPendingRequests}>Refresh</button>
+              </div>
+              {adminStatus && <p className="text-sm text-slate-300 mb-4">{adminStatus}</p>}
+              <div className="space-y-3">
+                {pendingRequests.length === 0 && <p className="text-slate-400">No pending requests</p>}
+                {pendingRequests.map((request) => (
+                  <div key={request.id} className="bg-slate-800 p-4 rounded flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold">{request.username}</p>
+                      <p className="text-xs text-slate-400">Requested {new Date(request.created_at).toLocaleString()}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="bg-green-600 px-3 py-1 rounded" onClick={() => handleApprove(request.id)}>Approve</button>
+                      <button className="bg-red-600 px-3 py-1 rounded" onClick={() => handleDeny(request.id)}>Deny</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </section>
+      )}
     </div>
   );
 }

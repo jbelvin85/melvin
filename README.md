@@ -14,6 +14,7 @@ Melvin is an open-source Magic: The Gathering rules assistant that combines the 
   - `MagicCompRules 20251114.txt`
   - `oracle-cards-20251221100301.json` (download via `GET https://api.scryfall.com/bulk-data`)
   - `rulings-20251221100031.json` (same endpoint)
+- Curated reference blurbs live under `data/reference/` and are versioned with the repo. These contain onboarding summaries (e.g., “How to Play Magic” and “Commander rules overview”) that the ingestion job folds into Melvin’s knowledge base alongside the Comprehensive Rules.
 - Derived artifacts (embeddings, caches) will later live under `data/processed/` (to be generated via scripts).
 
 ### Quick Start

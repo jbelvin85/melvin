@@ -37,6 +37,7 @@ class IngestService:
         self.rules_path = settings.raw_data_dir / "MagicCompRules 20251114.txt"
         self.cards_path = settings.raw_data_dir / "oracle-cards-20251221100301.json"
         self.rulings_path = settings.raw_data_dir / "rulings-20251221100031.json"
+        self.reference_dir = settings.reference_data_dir
         self.vectorstore_path = settings.processed_data_dir / "chroma_db"
 
         self.embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -46,18 +47,26 @@ class IngestService:
         rules = self._load_rules(self.rules_path)
         cards = self._load_cards(self.cards_path)
         rulings = self._load_rulings(self.rulings_path)
+        reference_docs = self._load_reference_docs()
 
         rules_texts = [f"{rule.identifier}: {rule.text}" for rule in rules]
         cards_texts = [f"{card.name}: {card.oracle_text}" for card in cards]
         rulings_texts = [f"{ruling.comment}" for ruling in rulings]
+        reference_texts = [doc["text"] for doc in reference_docs]
+        reference_meta = [doc["metadata"] for doc in reference_docs]
         
         rules_chunks = self.text_splitter.create_documents(rules_texts)
         cards_chunks = self.text_splitter.create_documents(cards_texts)
         rulings_chunks = self.text_splitter.create_documents(rulings_texts)
+        reference_chunks = []
+        if reference_texts:
+            reference_chunks = self.text_splitter.create_documents(reference_texts, metadatas=reference_meta)
 
         Chroma.from_documents(rules_chunks, self.embedding_function, persist_directory=str(self.vectorstore_path / "rules"))
         Chroma.from_documents(cards_chunks, self.embedding_function, persist_directory=str(self.vectorstore_path / "cards"))
         Chroma.from_documents(rulings_chunks, self.embedding_function, persist_directory=str(self.vectorstore_path / "rulings"))
+        if reference_chunks:
+            Chroma.from_documents(reference_chunks, self.embedding_function, persist_directory=str(self.vectorstore_path / "reference"))
 
     def _load_rules(self, path: Path) -> List[RuleEntry]:
         entries: List[RuleEntry] = []
@@ -102,5 +111,16 @@ class IngestService:
                 )
             )
         return entries
+
+    def _load_reference_docs(self) -> List[dict]:
+        docs: List[dict] = []
+        if not self.reference_dir.exists():
+            return docs
+        for path in sorted(self.reference_dir.glob("*.txt")):
+            text = path.read_text(encoding="utf-8").strip()
+            if not text:
+                continue
+            docs.append({"text": text, "metadata": {"source": path.name}})
+        return docs
 
 ingest_service = IngestService()

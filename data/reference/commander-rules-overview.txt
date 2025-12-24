@@ -1,0 +1,39 @@
+Title: Commander (EDH) Rules Overview
+
+1. Format Identity
+Commander (formerly EDH) is a multiplayer-minded Magic format built around 100-card singleton decks and a legendary commander. It emphasizes social play, longer games, and communication over strict tournament balance.
+
+2. Deck Construction
+- Exactly 100 cards: 99 in the library plus one commander.
+- Singleton: No duplicate card names other than basic lands.
+- Commander Eligibility: Any legendary creature (or other card that explicitly says it can be your commander).
+- The commander starts in the command zone instead of in the deck.
+
+3. Color Identity
+- A card’s color identity includes mana symbols in its mana cost and rules text, plus any color indicator.
+- Every card in the deck must have a color identity fully contained within the commander’s color identity.
+- Hybrid and Phyrexian symbols count as all of their colors; text-box symbols count too.
+
+4. Multiplayer Assumptions and Setup
+- Most games use 3–5 players.
+- Each player starts at 40 life.
+- Commander uses the London Mulligan: draw seven each mulligan, then bottom a number of cards equal to mulligans taken.
+- Unlike some 1v1 formats, the first player in multiplayer still draws on their first turn.
+
+5. Command Zone and Commander Tax
+- You may cast your commander from the command zone; each time you do after the first, add {2} colorless for every prior cast from the command zone that game (commander tax).
+- Whenever your commander would move to the graveyard, exile, library, or hand, you may replace that movement with “put it into the command zone” instead.
+- Choosing the command zone replacement does not itself increase commander tax; only casting from the zone does.
+
+6. Commander Damage
+- Track combat damage dealt by each commander to each player.
+- If a player takes 21 or more combat damage from the same commander during a game, that player loses the game regardless of their life total.
+
+7. Banned List Philosophy and Rule 0
+- Cards are banned for creating repetitive, unfun, or highly warping experiences rather than pure power level.
+- Rule 0: Players should discuss expectations—power level, proxies, combos, and desired experience—before playing.
+
+8. Practical Impact
+- High starting life and singleton decks encourage longer games, big plays, and table politics.
+- Deck construction revolves around the commander’s abilities and color identity.
+- Knowing when to send the commander back to the command zone versus leveraging graveyard recursion is a key skill.
