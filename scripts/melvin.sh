@@ -405,11 +405,53 @@ check_and_install_python() {
   fi
 }
 
+get_ollama_model_name() {
+  local env_value="${OLLAMA_MODEL:-}"
+  if [[ -n "$env_value" ]]; then
+    echo "$env_value"
+    return
+  fi
+  local files=("$ENV_FILE" "$REPO_ROOT/.env" "$REPO_ROOT/.env.example")
+  for file in "${files[@]}"; do
+    if [[ -f "$file" ]]; then
+      local value
+      value="$(grep -E '^OLLAMA_MODEL=' "$file" | tail -n1 | cut -d '=' -f2- | tr -d '\"' | tr -d '[:space:]')"
+      if [[ -n "$value" ]]; then
+        echo "$value"
+        return
+      fi
+    fi
+  done
+  echo "llama2"
+}
+
+ensure_ollama_model() {
+  if ! command -v docker >/dev/null 2>&1; then
+    return
+  fi
+  local model
+  model="$(get_ollama_model_name)"
+  echo "[melvin] Ensuring Ollama model '$model' is available..."
+  if ! docker compose up -d ollama >/dev/null 2>&1; then
+    echo "[melvin] Failed to start Ollama service via docker compose."
+    return
+  fi
+  if docker compose exec -T ollama ollama list 2>/dev/null | grep -wq "$model"; then
+    echo "[melvin] Ollama model '$model' already present."
+    return
+  fi
+  if ! docker compose exec -T ollama ollama pull "$model"; then
+    echo "[melvin] Failed to pull Ollama model '$model'. Run 'docker compose exec ollama ollama pull $model' manually."
+    exit 1
+  fi
+}
+
 check_dependencies() {
   check_and_install_docker
   check_and_install_nodejs
   check_and_install_python
   require_cmd curl
+  ensure_ollama_model
 }
 
 cmd_launch_bg() {
