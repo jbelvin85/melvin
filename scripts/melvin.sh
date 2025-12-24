@@ -265,7 +265,11 @@ ensure_data_files() {
 
 ensure_frontend_dependencies() {
   if [[ -f "$FRONTEND_DIR/package.json" ]]; then
-    (cd "$FRONTEND_DIR" && npm install)
+    if [[ -f "$FRONTEND_DIR/package-lock.json" ]]; then
+      (cd "$FRONTEND_DIR" && npm ci)
+    else
+      (cd "$FRONTEND_DIR" && npm install)
+    fi
   fi
 }
 
