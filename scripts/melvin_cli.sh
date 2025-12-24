@@ -82,27 +82,23 @@ draw_tabs() {
   if (( box_width < 10 )); then box_width=10; fi
 
   # Build tab line with active box
-  local parts=()
+  local top_parts=()
+  local mid_parts=()
   for i in "${!TABS[@]}"; do
     if [[ $i -eq $active_idx ]]; then
-      printf -v parts[i] "┌%s┐" "$(printf '─%.0s' $(seq 1 $((box_width-2))))"
+      printf -v top_parts[i] "┌%s┐" "$(printf '─%.0s' $(seq 1 $((box_width-2))))"
+      printf -v mid_parts[i] "│ %-*s │" $((box_width-4)) "$active_label"
     else
-      parts[i]=""
+      top_parts[i]=""
+      mid_parts[i]="[${TAB_KEYS[$i]^}:${TABS[$i]}]"
     fi
   done
-  local line1="${parts[*]}"
+
+  local line1="${top_parts[*]}"
   line1="${line1//  / }"
   line1=$(printf "%-$(($UI_INNER_WIDTH))s" "$line1")
 
-  local label_parts=()
-  for i in "${!TABS[@]}"; do
-    if [[ $i -eq $active_idx ]]; then
-      printf -v label_parts[i] "│ %-*s │" $((box_width-4)) "$active_label"
-    else
-      label_parts[i]="[${TAB_KEYS[$i]^}:${TABS[$i]}]"
-    fi
-  done
-  local line2="${label_parts[*]}"
+  local line2="${mid_parts[*]}"
   line2="${line2//  / }"
   line2=$(printf "%-$(($UI_INNER_WIDTH))s" "$line2")
 
