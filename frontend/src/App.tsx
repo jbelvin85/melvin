@@ -24,6 +24,25 @@ type AccountRequest = {
 
 const api = axios.create({ baseURL: '/api' });
 
+const formatError = (error: any): string => {
+  const detail = error?.response?.data?.detail ?? error?.message ?? error;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        const loc = item?.loc ? `[${item.loc.join('.')}] ` : '';
+        return `${loc}${item?.msg ?? JSON.stringify(item)}`;
+      })
+      .join(' | ');
+  }
+  if (detail && typeof detail === 'object') {
+    if (detail.msg) return detail.msg;
+    return JSON.stringify(detail);
+  }
+  return 'Unexpected error';
+};
+
 const decodeToken = (token: string) => {
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
@@ -133,7 +152,7 @@ function App() {
       setRequestUsername('');
       setRequestPassword('');
     } catch (error: any) {
-      setRequestStatus(error.response?.data?.detail ?? 'Failed to submit request.');
+      setRequestStatus(formatError(error));
     }
   };
 
@@ -150,7 +169,7 @@ function App() {
       setLoginUsername('');
       loadConversations();
     } catch (error: any) {
-      alert(error.response?.data?.detail ?? 'Login failed');
+      alert(formatError(error));
     }
   };
 
