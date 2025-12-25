@@ -25,10 +25,15 @@ SAMPLE_CASES = [
         "question": "If my commander dies twice, how much commander tax is applied?",
         "expect_sources": ["Comprehensive Rules"],
     },
+    {
+        "question": "I control two Islands, can I cast [Sol Ring] and [Arcane Signet]?",
+        "expect_sources": ["Sol Ring", "Arcane Signet"],
+        "forbid": ["CR 305"],
+    },
 ]
 
 
-def run_case(question: str, expect_sources: List[str]) -> bool:
+def run_case(question: str, expect_sources: List[str], forbid: List[str] | None = None) -> bool:
     service = get_melvin_service()
     answer, thinking, context = service.answer_question_with_details(question)
     ok = True
@@ -39,6 +44,11 @@ def run_case(question: str, expect_sources: List[str]) -> bool:
         if marker not in answer:
             print(f"[WARN] Expected citation fragment {marker!r} not present in answer for: {question!r}")
             ok = False
+    if forbid:
+        for phrase in forbid:
+            if phrase in answer:
+                print(f"[WARN] Forbidden phrase {phrase!r} appeared in answer for: {question!r}")
+                ok = False
     if not context.get("rules") and not context.get("cards") and not context.get("knowledge"):
         print(f"[WARN] No grounded context stored for: {question!r}")
         ok = False
@@ -48,7 +58,14 @@ def run_case(question: str, expect_sources: List[str]) -> bool:
 
 
 def main() -> None:
-    results = [run_case(case["question"], case.get("expect_sources", [])) for case in SAMPLE_CASES]
+    results = [
+        run_case(
+            case["question"],
+            case.get("expect_sources", []),
+            case.get("forbid"),
+        )
+        for case in SAMPLE_CASES
+    ]
     passed = sum(1 for result in results if result)
     print(f"Completed {len(results)} cases ({passed} passed, {len(results) - passed} warnings).")
 

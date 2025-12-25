@@ -266,14 +266,20 @@ Question: {question}
                 latest = rulings[-1]
                 lines.append(f"Latest ruling ({latest.get('published_at')}): {latest.get('comment')}")
             knowledge_sections.append("\n".join(lines))
-            if meta.get("name"):
-                knowledge_names.append(meta["name"])
+            card_name = meta.get("name")
+            if card_name:
+                knowledge_names.append(card_name)
             colors = meta.get("color_identity") or []
             commander_legality = (meta.get("legalities") or {}).get("commander")
             color_text = ", ".join(colors) if colors else "colorless"
             legality_text = commander_legality or "unknown"
-            tools_context_parts.append(f"Knowledge:color_identity {meta.get('name')} => {color_text}")
-            tools_context_parts.append(f"Knowledge:commander_legality {meta.get('name')} => {legality_text}")
+            tools_context_parts.append(f"Knowledge:color_identity {card_name} => {color_text}")
+            tools_context_parts.append(f"Knowledge:commander_legality {card_name} => {legality_text}")
+            type_line = (meta.get("type_line") or "").lower()
+            if "land" in type_line:
+                tools_context_parts.append(f"CardType:{card_name} => {meta.get('type_line','Unknown')} (play only as a land per CR 305.9)")
+            else:
+                tools_context_parts.append(f"CardType:{card_name} => {meta.get('type_line','Unknown')} (castable as a spell per CR 601)")
         card_names_for_tools = [entry.name for entry in resolved_list if entry.name]
 
         if knowledge_sections:
