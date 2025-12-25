@@ -33,21 +33,9 @@ class MelvinService:
         self.vectorstore_path = settings.processed_data_dir / "chroma_db"
         self.embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
         
-        self.rules_db = Chroma(
-            persist_directory=str(self.vectorstore_path / "rules"),
-            embedding_function=self.embedding_function,
-            anonymized_telemetry=False,
-        )
-        self.cards_db = Chroma(
-            persist_directory=str(self.vectorstore_path / "cards"),
-            embedding_function=self.embedding_function,
-            anonymized_telemetry=False,
-        )
-        self.rulings_db = Chroma(
-            persist_directory=str(self.vectorstore_path / "rulings"),
-            embedding_function=self.embedding_function,
-            anonymized_telemetry=False,
-        )
+        self.rules_db = Chroma(persist_directory=str(self.vectorstore_path / "rules"), embedding_function=self.embedding_function)
+        self.cards_db = Chroma(persist_directory=str(self.vectorstore_path / "cards"), embedding_function=self.embedding_function)
+        self.rulings_db = Chroma(persist_directory=str(self.vectorstore_path / "rulings"), embedding_function=self.embedding_function)
         self.reference_db = self._load_vector_store("reference")
         self.retrieval_k = 6
         self.retrieval_threshold = 0.25
@@ -74,11 +62,7 @@ Question: {question}
         target = self.vectorstore_path / name
         if not target.exists():
             return None
-        return Chroma(
-            persist_directory=str(target),
-            embedding_function=self.embedding_function,
-            anonymized_telemetry=False,
-        )
+        return Chroma(persist_directory=str(target), embedding_function=self.embedding_function)
 
     def _build_player_guidance(self, user: Optional[User] = None) -> str:
         """
