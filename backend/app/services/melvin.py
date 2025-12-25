@@ -15,6 +15,8 @@ from ..services.scryfall import scryfall_service
 from ..services.state_manager import state_manager_cls
 from .cards import card_search_service
 from .knowledge import knowledge_store
+from .mana_analyzer import explain_mana_check
+from .sequencer import analyze_sequences
 
 if TYPE_CHECKING:
     from ..models.user import User
@@ -272,6 +274,8 @@ Question: {question}
             legality_text = commander_legality or "unknown"
             tools_context_parts.append(f"Knowledge:color_identity {meta.get('name')} => {color_text}")
             tools_context_parts.append(f"Knowledge:commander_legality {meta.get('name')} => {legality_text}")
+        card_names_for_tools = [entry.name for entry in resolved_list if entry.name]
+
         if knowledge_sections:
             payload["knowledge_context"] = "\n\n".join(knowledge_sections)
             thinking.append({"label": "Knowledge graph", "detail": "Injected structured metadata for tagged/user-selected cards."})
@@ -279,6 +283,16 @@ Question: {question}
             payload["knowledge_context"] = ""
         if knowledge_names:
             citations.append("Knowledge graph data: " + ", ".join(knowledge_names))
+
+        mana_report = explain_mana_check(question, card_names_for_tools)
+        if mana_report:
+            tools_context_parts.append(mana_report)
+            thinking.append({"label": "Mana analysis", "detail": mana_report})
+
+        sequence_report = analyze_sequences(question, card_names_for_tools)
+        if sequence_report:
+            tools_context_parts.append(sequence_report)
+            thinking.append({"label": "Sequencer", "detail": sequence_report})
 
         if external_card_sections:
             payload["external_cards_context"] = "\n\n".join(external_card_sections)
