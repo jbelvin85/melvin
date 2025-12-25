@@ -31,11 +31,8 @@ class MelvinService:
         self.cards_db = Chroma(persist_directory=str(self.vectorstore_path / "cards"), embedding_function=self.embedding_function)
         self.rulings_db = Chroma(persist_directory=str(self.vectorstore_path / "rulings"), embedding_function=self.embedding_function)
         self.reference_db = self._load_vector_store("reference")
-
-        self.rules_retriever = self.rules_db.as_retriever()
-        self.cards_retriever = self.cards_db.as_retriever()
-        self.rulings_retriever = self.rulings_db.as_retriever()
-        self.reference_retriever = self.reference_db.as_retriever() if self.reference_db else None
+        self.retrieval_k = 6
+        self.retrieval_threshold = 0.25
         self.rule_identifiers = {rule.identifier for rule in datastore.rules}
 
         self.llm = Ollama(model="llama3", base_url="http://ollama:11434")
@@ -124,6 +121,7 @@ Question: {question}
     ) -> Tuple[str, List[Dict[str, str]], Dict[str, str]]:
         explicit_cards = selected_cards or []
         thinking: List[Dict[str, str]] = []
+        citations: List[str] = []
         thinking.append({"label": "Question received", "detail": question.strip()})
         style_notes: List[str] = []
         if tone:
@@ -182,6 +180,7 @@ Question: {question}
         payload = {"question": question}
         resolved_cards: Dict[str, CardEntry] = {}
         warnings: List[str] = []
+        tools_context_parts: List[str] = []
         if explicit_cards:
             resolved = card_search_service.resolve_cards(explicit_cards)
             if resolved:
@@ -267,6 +266,12 @@ Question: {question}
             knowledge_sections.append("\n".join(lines))
             if meta.get("name"):
                 knowledge_names.append(meta["name"])
+            colors = meta.get("color_identity") or []
+            commander_legality = (meta.get("legalities") or {}).get("commander")
+            color_text = ", ".join(colors) if colors else "colorless"
+            legality_text = commander_legality or "unknown"
+            tools_context_parts.append(f"Knowledge:color_identity {meta.get('name')} => {color_text}")
+            tools_context_parts.append(f"Knowledge:commander_legality {meta.get('name')} => {legality_text}")
         if knowledge_sections:
             payload["knowledge_context"] = "\n\n".join(knowledge_sections)
             thinking.append({"label": "Knowledge graph", "detail": "Injected structured metadata for tagged/user-selected cards."})
@@ -277,11 +282,11 @@ Question: {question}
 
         if external_card_sections:
             payload["external_cards_context"] = "\n\n".join(external_card_sections)
+        rule_engine_used = False
         if state_context:
             payload["state_context"] = state_context
             # Derive deterministic rule outputs for top suspected card and include as tools_context
             try:
-                tools_context_parts = []
                 top_card_name = None
                 if resolved_list and resolved_list[0].name:
                     top_card_name = resolved_list[0].name
@@ -298,20 +303,23 @@ Question: {question}
                             from ..services.rule_engine import rule_engine
                             castable = rule_engine.is_castable(state_context or {}, player_id, top_card_name)
                             tools_context_parts.append(f"Rule:is_castable {top_card_name} => {castable}")
+                            rule_engine_used = True
                         except Exception:
                             pass
                     try:
                         from ..services.rule_engine import rule_engine
                         validate = rule_engine.validate_targets(state_context or {}, {"card_name": top_card_name, "targets": []})
                         tools_context_parts.append(f"Rule:validate_targets {top_card_name} => {validate}")
+                        rule_engine_used = True
                     except Exception:
                         pass
 
-                if tools_context_parts:
-                    payload["tools_context"] = "\n".join(tools_context_parts)
-                    thinking.append({"label": "Rule engine", "detail": "Added deterministic rule engine checks to context"})
             except Exception:
                 pass
+        if rule_engine_used:
+            thinking.append({"label": "Rule engine", "detail": "Added deterministic rule engine checks to context"})
+        if tools_context_parts:
+            payload["tools_context"] = "\n".join(tools_context_parts)
         
         # Add player guidance based on profile
         player_guidance = self._build_player_guidance(user)
@@ -322,12 +330,12 @@ Question: {question}
         if player_guidance:
             thinking.append({"label": "Player profile", "detail": player_guidance})
 
-        rules_docs = self.rules_retriever.get_relevant_documents(question)
-        cards_docs = self.cards_retriever.get_relevant_documents(question)
-        rulings_docs = self.rulings_retriever.get_relevant_documents(question)
+        rules_docs = self._retrieve_documents(self.rules_db, question)
+        cards_docs = self._retrieve_documents(self.cards_db, question)
+        rulings_docs = self._retrieve_documents(self.rulings_db, question)
         reference_docs: List = []
-        if self.reference_retriever:
-            reference_docs = self.reference_retriever.get_relevant_documents(question)
+        if self.reference_db:
+            reference_docs = self._retrieve_documents(self.reference_db, question, include_scores=False)
 
         payload["rules_context"] = rules_docs
         payload["cards_context"] = cards_docs
@@ -438,6 +446,17 @@ Question: {question}
         merged["knowledge_context"] = payload.get("knowledge_context", "")
         merged["player_guidance"] = payload.get("player_guidance", "")
         return merged
+
+    def _retrieve_documents(self, store: Chroma, question: str, include_scores: bool = True) -> List:
+        try:
+            if include_scores:
+                results = store.similarity_search_with_relevance_scores(question, k=self.retrieval_k)
+                docs = [doc for doc, score in results if score is None or score >= self.retrieval_threshold]
+            else:
+                docs = store.similarity_search(question, k=self.retrieval_k)
+            return docs
+        except Exception:
+            return []
 
     def _rule_ids_from_docs(self, docs: List) -> List[str]:
         if not docs:

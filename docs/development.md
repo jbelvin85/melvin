@@ -71,6 +71,12 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 - Every response now carries an explicit “Sources” block listing the exact corpora (rule IDs, card names, reference files) that were injected into the prompt. The chat drawer mirrors that context so operators can audit grounding easily.
 - Deterministic helpers (rule engine checks, knowledge store metadata) continue to run alongside the LLM, and their outputs are appended to the prompt verbatim. When those tools fail or lack data, the response includes a warning so users know which checks could not be completed.
 
+## Training Melvin Like a Judge
+- Retrieval runs directly against Chroma using similarity-score filtering. Documents with confidence below the configured threshold are discarded so only strongly grounded passages reach the model. If no corpus produces a confident hit, Melvin falls back with a clarification request instead of speculating.
+- Structured metadata (color identity, commander legality, keywords, rulings) is injected via the knowledge store and cited explicitly. Deterministic helpers also summarize each referenced card’s legality and color identity inside the `tools_context`, so the LLM gets concrete facts instead of inferring them.
+- A lightweight evaluation harness lives at `backend/app/services/eval_harness.py`. Run `python -m backend.app.services.eval_harness` after deployments to hit a curated set of judge-style prompts and confirm that every response includes citations, warnings for unknown cards/rules, and a non-empty context snapshot. Expand `SAMPLE_CASES` with real judge calls as our corpus grows.
+- Encourage operators to wrap card names in `[brackets]`. The frontend copy mentions this, and the backend validates every tag. This workflow guarantees we only reason about cards that exist in the on-disk Oracle data.
+
 ## Near-Term Engineering Tasks
 - [ ] Define exact LLM hosting approach (model + runtime) that satisfies open-source constraint.
 - [ ] Write ingestion script prototypes for each data source (current MVP uses a simple keyword matcher).
