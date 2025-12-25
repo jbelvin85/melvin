@@ -624,7 +624,7 @@ cmd_migrate() {
 
 cmd_eval() {
   require_cmd docker
-  docker compose exec -T api python -u scripts/evaluate.py || echo "[melvin] Evaluation script failed"
+  docker compose exec -T api python -m backend.app.services.eval_harness || echo "[melvin] Evaluation script failed"
 }
 
 cmd_accounts() {
