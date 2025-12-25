@@ -70,11 +70,31 @@ class IngestService:
         if reference_texts:
             reference_chunks = self.text_splitter.create_documents(reference_texts, metadatas=reference_meta)
 
-        Chroma.from_documents(rules_chunks, self.embedding_function, persist_directory=str(self.vectorstore_path / "rules"))
-        Chroma.from_documents(cards_chunks, self.embedding_function, persist_directory=str(self.vectorstore_path / "cards"))
-        Chroma.from_documents(rulings_chunks, self.embedding_function, persist_directory=str(self.vectorstore_path / "rulings"))
+        Chroma.from_documents(
+            rules_chunks,
+            self.embedding_function,
+            persist_directory=str(self.vectorstore_path / "rules"),
+            anonymized_telemetry=False,
+        )
+        Chroma.from_documents(
+            cards_chunks,
+            self.embedding_function,
+            persist_directory=str(self.vectorstore_path / "cards"),
+            anonymized_telemetry=False,
+        )
+        Chroma.from_documents(
+            rulings_chunks,
+            self.embedding_function,
+            persist_directory=str(self.vectorstore_path / "rulings"),
+            anonymized_telemetry=False,
+        )
         if reference_chunks:
-            Chroma.from_documents(reference_chunks, self.embedding_function, persist_directory=str(self.vectorstore_path / "reference"))
+            Chroma.from_documents(
+                reference_chunks,
+                self.embedding_function,
+                persist_directory=str(self.vectorstore_path / "reference"),
+                anonymized_telemetry=False,
+            )
 
         card_metadata = self._build_card_metadata(self._raw_card_payload, rulings)
         self._write_card_metadata(card_metadata)
