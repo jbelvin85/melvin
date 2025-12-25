@@ -212,6 +212,39 @@ function App() {
     }
   }, [authHeaders, handleAuthError, isAdmin, token]);
 
+  const selectConversation = useCallback(async (conversation: Conversation) => {
+    setSelectedConversation(conversation);
+    try {
+      const response = await api.get(`/conversations/${conversation.id}`, authHeaders);
+      setMessages(response.data.messages ?? []);
+    } catch (error) {
+      handleAuthError(error);
+    }
+  }, [authHeaders, handleAuthError]);
+
+  const loadConversations = useCallback(async () => {
+    if (!token) return;
+    try {
+      const response = await api.get<Conversation[]>('/conversations/', authHeaders);
+      setConversations(response.data);
+      if (response.data.length && !selectedConversation) {
+        selectConversation(response.data[0]);
+      }
+    } catch (error) {
+      handleAuthError(error);
+    }
+  }, [authHeaders, handleAuthError, selectConversation, selectedConversation, token]);
+
+  const loadPendingRequests = useCallback(async () => {
+    if (!token) return;
+    try {
+      const response = await api.get<AccountRequest[]>('/auth/requests', authHeaders);
+      setPendingRequests(response.data);
+    } catch (error) {
+      handleAuthError(error);
+    }
+  }, [authHeaders, handleAuthError, token]);
+
   useEffect(() => {
     if (token) {
       const payload = decodeToken(token);
@@ -300,29 +333,6 @@ function App() {
     setShowAssessment(false);
   };
 
-  const loadConversations = async () => {
-    if (!token) return;
-    try {
-      const response = await api.get<Conversation[]>('/conversations/', authHeaders);
-      setConversations(response.data);
-      if (response.data.length && !selectedConversation) {
-        selectConversation(response.data[0]);
-      }
-    } catch (error) {
-      handleAuthError(error);
-    }
-  };
-
-  const selectConversation = async (conversation: Conversation) => {
-    setSelectedConversation(conversation);
-    try {
-      const response = await api.get(`/conversations/${conversation.id}`, authHeaders);
-      setMessages(response.data.messages ?? []);
-    } catch (error) {
-      handleAuthError(error);
-    }
-  };
-
   const handleRequestAccount = async () => {
     try {
       await api.post('/auth/request', {
@@ -402,16 +412,6 @@ function App() {
       }
     }
     setIsThinking(false);
-  };
-
-  const loadPendingRequests = async () => {
-    if (!token) return;
-    try {
-      const response = await api.get<AccountRequest[]>('/auth/requests', authHeaders);
-      setPendingRequests(response.data);
-    } catch (error) {
-      handleAuthError(error);
-    }
   };
 
   const handleApprove = async (requestId: number) => {
