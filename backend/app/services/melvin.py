@@ -183,6 +183,9 @@ Question: {question}
         resolved_cards: Dict[str, CardEntry] = {}
         warnings: List[str] = []
         tools_context_parts: List[str] = []
+        commander_colors = self._parse_commander_identity(question)
+        if commander_colors:
+            tools_context_parts.append("Commander identity => " + ", ".join(commander_colors))
         if explicit_cards:
             resolved = card_search_service.resolve_cards(explicit_cards)
             if resolved:
@@ -280,6 +283,13 @@ Question: {question}
                 tools_context_parts.append(f"CardType:{card_name} => {meta.get('type_line','Unknown')} (play only as a land per CR 305.9)")
             else:
                 tools_context_parts.append(f"CardType:{card_name} => {meta.get('type_line','Unknown')} (castable as a spell per CR 601)")
+            if self._requires_commander_colors(meta.get("oracle_text", "")):
+                if commander_colors:
+                    tools_context_parts.append(f"{card_name}: commander colors supplied ({', '.join(commander_colors)})")
+                else:
+                    warning = f"{card_name} references your commander's color identity. Please specify your commander's colors."
+                    if warning not in warnings:
+                        warnings.append(warning)
         card_names_for_tools = [entry.name for entry in resolved_list if entry.name]
 
         if knowledge_sections:
@@ -501,6 +511,27 @@ Question: {question}
             citation_lines = "\n".join(f"- {item}" for item in citations)
             blocks.append(f"Sources:\n{citation_lines}")
         return "\n\n".join(block for block in blocks if block)
+
+    def _parse_commander_identity(self, question: str) -> List[str]:
+        colors = {
+            "white": "White",
+            "blue": "Blue",
+            "black": "Black",
+            "red": "Red",
+            "green": "Green",
+        }
+        detected: List[str] = []
+        lowered = question.lower()
+        for word, label in colors.items():
+            if word in lowered and label not in detected:
+                detected.append(label)
+        return detected
+
+    def _requires_commander_colors(self, oracle_text: str) -> bool:
+        if not oracle_text:
+            return False
+        lowered = oracle_text.lower()
+        return "commander's color identity" in lowered
 
 
 _melvin_service: MelvinService | None = None
