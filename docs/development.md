@@ -64,6 +64,13 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 - Users can “tag” cards inline by wrapping their names in square brackets (e.g., `[Hullbreacher]`) inside any chat message. The backend resolves those tags against the local Oracle dump, validates that the cards exist, and injects their summaries plus structured metadata into the LLM prompt. The React composer hints at this syntax and the context drawer shows exactly which tagged cards were added.
 - The knowledge store is exposed via `backend/app/services/knowledge.py` for future tooling (combo detectors, rule cross-references, format checkers). When adding new data-driven helpers, prefer storing compact JSON snapshots alongside the embeddings so containers can reload them quickly during startup.
 
+## Hallucination Controls
+- The API verifies every tagged or auto-detected card name against the local Oracle dump. Unknown cards trigger a warning that is surfaced both in the reasoning panel and in the assistant’s reply, rather than allowing the LLM to guess.
+- Rule references (e.g., `123.4a`) are checked against the Comprehensive Rules snapshot. Missing IDs generate a warning so users know the citation could not be validated.
+- Before invoking the LLM, the service confirms that at least one source of grounded context (rules, cards, rulings, reference blurbs, or knowledge graph entries) was retrieved. If nothing relevant turns up, Melvin returns a fallback message asking for clarification instead of fabricating an answer.
+- Every response now carries an explicit “Sources” block listing the exact corpora (rule IDs, card names, reference files) that were injected into the prompt. The chat drawer mirrors that context so operators can audit grounding easily.
+- Deterministic helpers (rule engine checks, knowledge store metadata) continue to run alongside the LLM, and their outputs are appended to the prompt verbatim. When those tools fail or lack data, the response includes a warning so users know which checks could not be completed.
+
 ## Near-Term Engineering Tasks
 - [ ] Define exact LLM hosting approach (model + runtime) that satisfies open-source constraint.
 - [ ] Write ingestion script prototypes for each data source (current MVP uses a simple keyword matcher).
