@@ -38,7 +38,8 @@ class MelvinService:
         self.reference_retriever = self.reference_db.as_retriever() if self.reference_db else None
         self.rule_identifiers = {rule.identifier for rule in datastore.rules}
 
-        self.llm = Ollama(model="llama3", base_url="http://ollama:11434")
+        self.model_name = self._load_model_choice(default_model=settings.ollama_model)
+        self.llm = Ollama(model=self.model_name, base_url=self._ollama_base_url(settings))
         self.prompt = ChatPromptTemplate.from_template(
             """Answer the question based only on the following context:
 Rules: {rules_context}
@@ -98,6 +99,45 @@ Question: {question}
         if entry.oracle_text:
             parts.append(f"Oracle: {entry.oracle_text}")
         return "\n".join(parts)
+
+    def _ollama_base_url(self, settings):
+        return f"http://{settings.ollama_host}:{settings.ollama_port}"
+
+    def _model_choice_path(self):
+        settings = get_settings()
+        return settings.processed_data_dir / "model_selection.json"
+
+    def _load_model_choice(self, default_model: str) -> str:
+        path = self._model_choice_path()
+        if path.exists():
+            try:
+                import json
+
+                with path.open("r", encoding="utf-8") as handle:
+                    data = json.load(handle)
+                if isinstance(data, dict) and isinstance(data.get("model"), str):
+                    return data["model"]
+            except Exception:
+                pass
+        return default_model
+
+    def _save_model_choice(self, model_name: str) -> None:
+        path = self._model_choice_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            import json
+
+            with path.open("w", encoding="utf-8") as handle:
+                json.dump({"model": model_name}, handle)
+        except Exception:
+            # Persisting the choice is best-effort; ignore failures to avoid breaking runtime flow.
+            pass
+
+    def set_model(self, model_name: str) -> None:
+        settings = get_settings()
+        self.model_name = model_name
+        self.llm = Ollama(model=model_name, base_url=self._ollama_base_url(settings))
+        self._save_model_choice(model_name)
 
     def _extract_tagged_cards(self, text: str) -> List[str]:
         pattern = re.compile(r"\[([^\[\]]{2,120})\]")

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ..core.security import create_access_token, hash_password, verify_password
@@ -11,6 +11,8 @@ from ..schemas.auth import (
     ApproveRequest,
     LoginRequest,
     TokenResponse,
+    UsersPage,
+    UserOut,
 )
 
 
@@ -108,3 +110,16 @@ def deny_request(
     db.commit()
     db.refresh(record)
     return record
+
+
+@router.get("/users", response_model=UsersPage)
+def list_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=200),
+    _: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> UsersPage:
+    query = db.query(User).order_by(User.created_at.desc())
+    total = query.count()
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    return UsersPage(items=items, total=total, page=page, page_size=page_size)

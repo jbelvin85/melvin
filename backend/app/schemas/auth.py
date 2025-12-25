@@ -4,6 +4,23 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class UserOut(BaseModel):
+    id: int
+    username: str
+    is_admin: bool
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class UsersPage(BaseModel):
+    items: list[UserOut]
+    total: int
+    page: int
+    page_size: int
+
+
 class AccountRequestCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=40)
     password: str = Field(

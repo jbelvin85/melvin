@@ -39,6 +39,11 @@ type ProfileSummary = {
   preference_breakdown: Record<string, number>;
 };
 
+type ModelOptions = {
+  current: string;
+  available: string[];
+};
+
 type TabKey = 'chat' | 'tools' | 'profile' | 'settings';
 type MessageContext = {
   rules?: string;
@@ -129,6 +134,8 @@ function App() {
 
   const [pendingRequests, setPendingRequests] = useState<AccountRequest[]>([]);
   const [adminStatus, setAdminStatus] = useState<string | null>(null);
+  const [modelOptions, setModelOptions] = useState<ModelOptions | null>(null);
+  const [modelStatus, setModelStatus] = useState<string | null>(null);
   const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -192,6 +199,19 @@ function App() {
     }
   }, [authHeaders, handleAuthError, token]);
 
+  const loadModelOptions = useCallback(async () => {
+    if (!token || !isAdmin) return;
+    setModelStatus(null);
+    try {
+      const response = await api.get<ModelOptions>('/models/ollama', authHeaders);
+      setModelOptions(response.data);
+    } catch (error) {
+      if (!handleAuthError(error, 'Failed to load model list')) {
+        setModelStatus('Could not load available models from Ollama.');
+      }
+    }
+  }, [authHeaders, handleAuthError, isAdmin, token]);
+
   useEffect(() => {
     if (token) {
       const payload = decodeToken(token);
@@ -200,11 +220,12 @@ function App() {
       loadConversations();
       if (payload?.admin) {
         loadPendingRequests();
+        loadModelOptions();
       }
     } else {
       setUserName(null);
     }
-  }, [token]);
+  }, [loadConversations, loadModelOptions, loadPendingRequests, token]);
 
   useEffect(() => {
     if (token && activeTab === 'profile') {
@@ -770,26 +791,70 @@ function App() {
           </div>
 
           {isAdmin && (
-            <section className="bg-slate-900 p-6 rounded-lg shadow">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">Admin Queue</h2>
-                <button className="text-sm underline" onClick={loadPendingRequests}>Refresh</button>
-              </div>
-              {adminStatus && <p className="text-sm text-slate-300 mb-4">{adminStatus}</p>}
-              <div className="space-y-3">
-                {pendingRequests.length === 0 && <p className="text-slate-400">No pending requests</p>}
-                {pendingRequests.map((request) => (
-                  <div key={request.id} className="bg-slate-800 p-4 rounded flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold">{request.username}</p>
-                      <p className="text-xs text-slate-400">Requested {new Date(request.created_at).toLocaleString()}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button className="bg-green-600 px-3 py-1 rounded" onClick={() => handleApprove(request.id)}>Approve</button>
-                      <button className="bg-red-600 px-3 py-1 rounded" onClick={() => handleDeny(request.id)}>Deny</button>
+            <section className="space-y-4">
+              <div className="bg-slate-900 p-6 rounded-lg shadow space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Model Selection</h2>
+                  <button className="text-sm underline" onClick={loadModelOptions}>Refresh</button>
+                </div>
+                {modelStatus && <p className="text-sm text-red-300">{modelStatus}</p>}
+                {modelOptions ? (
+                  <div className="grid gap-3 md:grid-cols-2 items-end">
+                    <label className="flex flex-col gap-2 text-sm text-slate-300">
+                      Active model
+                      <select
+                        className="p-3 rounded bg-slate-800 text-white"
+                        value={modelOptions.current}
+                        onChange={async (e) => {
+                          const next = e.target.value;
+                          setModelStatus(null);
+                          try {
+                            const response = await api.post<ModelOptions>('/models/ollama', { model: next }, authHeaders);
+                            setModelOptions(response.data);
+                            setModelStatus(`Model switched to ${next}`);
+                          } catch (error) {
+                            if (!handleAuthError(error, 'Failed to switch model')) {
+                              setModelStatus('Model change failed.');
+                            }
+                          }
+                        }}
+                      >
+                        {modelOptions.available.map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="text-sm text-slate-400">
+                      <p>Models are fetched from the Ollama service configured for Melvin.</p>
+                      <p>Ensure the selected model is pulled and available.</p>
                     </div>
                   </div>
-                ))}
+                ) : (
+                  <p className="text-slate-400 text-sm">Loading model list...</p>
+                )}
+              </div>
+
+              <div className="bg-slate-900 p-6 rounded-lg shadow">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold">Admin Queue</h2>
+                  <button className="text-sm underline" onClick={loadPendingRequests}>Refresh</button>
+                </div>
+                {adminStatus && <p className="text-sm text-slate-300 mb-4">{adminStatus}</p>}
+                <div className="space-y-3">
+                  {pendingRequests.length === 0 && <p className="text-slate-400">No pending requests</p>}
+                  {pendingRequests.map((request) => (
+                    <div key={request.id} className="bg-slate-800 p-4 rounded flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold">{request.username}</p>
+                        <p className="text-xs text-slate-400">Requested {new Date(request.created_at).toLocaleString()}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button className="bg-green-600 px-3 py-1 rounded" onClick={() => handleApprove(request.id)}>Approve</button>
+                        <button className="bg-red-600 px-3 py-1 rounded" onClick={() => handleDeny(request.id)}>Deny</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
           )}

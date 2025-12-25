@@ -31,7 +31,7 @@ show_menu() {
   echo "┌─────────────────────────────────────────────────────────────────────────┐"
   echo "│                          MAIN MENU                                      │"
   echo "├─────────────────────────────────────────────────────────────────────────┤"
-  echo "│  [1] View Pending Account Requests                                      │"
+  echo "│  [1] Manage Pending Requests (view/select/approve/deny)                 │"
   echo "│  [2] Approve Account Request                                            │"
   echo "│  [3] Deny Account Request                                               │"
   echo "│  [4] View Approved Users                                                │"
@@ -244,17 +244,7 @@ deny_request() {
 # View approved users
 view_users() {
   check_auth || return
-  
-  print_section "APPROVED USERS (Simulated)"
-  
-  echo ""
-  echo "This would list all approved users from the database."
-  echo "Note: The current API doesn't have a list-users endpoint."
-  echo ""
-  print_status "info" "To view users, check the database directly:"
-  echo "  docker-compose exec postgres psql -U melvin -d melvin -c \"SELECT * FROM users;\""
-  
-  pause_screen
+  users_paged_screen
 }
 
 # Logout
@@ -280,11 +270,17 @@ main() {
       list)
         view_pending_requests_cli
         ;;
+      pending)
+        pending_requests_screen
+        ;;
       approve)
         approve_request_cli "$@"
         ;;
       deny)
         deny_request_cli "$@"
+        ;;
+      users)
+        users_paged_screen
         ;;
       list-users)
         view_users_cli
@@ -300,7 +296,7 @@ main() {
         ;;
       *)
         echo "Unknown command: $command"
-        echo "Usage: $0 [list|approve|deny|list-users|create-admin|login|logout]"
+        echo "Usage: $0 [pending|list|approve|deny|users|list-users|create-admin|login|logout]"
         exit 1
         ;;
     esac
@@ -308,6 +304,279 @@ main() {
     # Interactive mode
     interactive_menu
   fi
+}
+
+bulk_process_requests() {
+  local action="$1"
+  shift || true
+  local ids=("$@")
+
+  if [[ "${#ids[@]}" -eq 0 ]]; then
+    print_status "error" "No requests selected."
+    pause_screen
+    return 1
+  fi
+
+  local endpoint suffix verb
+  case "$action" in
+    approve) endpoint="approve"; verb="approving" ;;
+    deny) endpoint="deny"; verb="denying" ;;
+    *) print_status "error" "Unknown action: $action"; pause_screen; return 1 ;;
+  esac
+
+  local success=0
+  local failed=0
+  for request_id in "${ids[@]}"; do
+    local response
+    response=$(curl -fsS -X POST "$API_URL/api/auth/requests/$request_id/$endpoint" \
+      -H "Authorization: Bearer $ADMIN_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{}" 2>/dev/null || echo "")
+
+    if [[ -z "$response" ]]; then
+      print_status "error" "Request #$request_id: failed"
+      ((failed++))
+      continue
+    fi
+
+    if [[ "$action" == "approve" ]]; then
+      if echo "$response" | grep -q '"status":"approved"'; then
+        print_status "success" "Request #$request_id approved"
+        ((success++))
+      else
+        print_status "error" "Request #$request_id: unexpected response"
+        ((failed++))
+      fi
+    else
+      if echo "$response" | grep -q '"status":"denied"'; then
+        print_status "success" "Request #$request_id denied"
+        ((success++))
+      else
+        print_status "error" "Request #$request_id: unexpected response"
+        ((failed++))
+      fi
+    fi
+  done
+
+  echo ""
+  print_status "info" "Finished $verb requests: $success succeeded, $failed failed."
+  pause_screen
+}
+
+pending_requests_screen() {
+  check_auth || return
+
+  print_section "PENDING ACCOUNT REQUESTS"
+  print_status "info" "Fetching requests from API..."
+
+  local response
+  response=$(curl -fsS -X GET "$API_URL/api/auth/requests" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" 2>/dev/null || echo "")
+
+  if [[ -z "$response" ]] || [[ "$response" == "[]" ]]; then
+    print_status "info" "No pending account requests."
+    pause_screen
+    return
+  fi
+
+  local selection_json
+  selection_json=$(echo "$response" | python3 - <<'PY'
+import curses
+import json
+import sys
+
+def render(stdscr, rows):
+    curses.curs_set(0)
+    height, width = stdscr.getmaxyx()
+    current = 0
+    selected = set()
+    message = "↑/↓ to move • Space/Enter to toggle • a=approve • d=deny • q=cancel"
+
+    while True:
+        stdscr.clear()
+        title = "Pending account requests"
+        stdscr.addnstr(0, 0, title.ljust(width - 1), width - 1, curses.A_BOLD)
+        stdscr.addnstr(1, 0, message.ljust(width - 1), width - 1)
+        stdscr.addnstr(2, 0, "-" * (width - 1), width - 1)
+
+        for idx, row in enumerate(rows):
+            mark = "[x]" if idx in selected else "[ ]"
+            line = f"{mark} #{row['id']:>3} {row['username']:<16} {row['status']:<8} {row['created']}"
+            attr = curses.A_REVERSE if idx == current else curses.A_NORMAL
+            stdscr.addnstr(3 + idx, 0, line.ljust(width - 1), width - 1, attr)
+
+        stdscr.refresh()
+        key = stdscr.getch()
+
+        if key in (curses.KEY_UP, ord('k')):
+            current = (current - 1) % len(rows)
+        elif key in (curses.KEY_DOWN, ord('j')):
+            current = (current + 1) % len(rows)
+        elif key in (curses.KEY_ENTER, 10, 13, 32):  # Enter or Space
+            if current in selected:
+                selected.remove(current)
+            else:
+                selected.add(current)
+        elif key in (ord('a'), ord('A')):
+            if selected:
+                return {"action": "approve", "ids": [rows[i]["id"] for i in sorted(selected)]}
+            message = "Select at least one request before approving."
+        elif key in (ord('d'), ord('D')):
+            if selected:
+                return {"action": "deny", "ids": [rows[i]["id"] for i in sorted(selected)]}
+            message = "Select at least one request before denying."
+        elif key in (ord('q'), 27):
+            return {}
+
+    return {}
+
+try:
+    data = json.loads(sys.stdin.read() or "[]")
+except json.JSONDecodeError:
+    print("{}")
+    sys.exit(0)
+
+rows = []
+for item in data:
+    rows.append({
+        "id": item.get("id"),
+        "username": item.get("username", "unknown"),
+        "status": item.get("status", "pending"),
+        "created": item.get("created_at", "unknown"),
+    })
+
+if not rows:
+    print("{}")
+    sys.exit(0)
+
+result = curses.wrapper(render, rows)
+print(json.dumps(result))
+PY
+)
+
+  local action ids_raw
+  action=$(echo "$selection_json" | python3 - <<'PY'
+import json, sys
+data = json.loads(sys.stdin.read() or "{}")
+print(data.get("action", ""))
+PY
+)
+  ids_raw=$(echo "$selection_json" | python3 - <<'PY'
+import json, sys
+data = json.loads(sys.stdin.read() or "{}")
+print(" ".join(str(i) for i in data.get("ids", [])))
+PY
+)
+
+  if [[ -z "$action" ]] || [[ -z "$ids_raw" ]]; then
+    print_status "info" "No action taken."
+    pause_screen
+    return
+  fi
+
+  read -r -a ids <<< "$ids_raw"
+  bulk_process_requests "$action" "${ids[@]}"
+}
+
+users_paged_screen() {
+  check_auth || return
+
+  local page=1
+  local page_size=15
+
+  while true; do
+    local response
+    response=$(curl -fsS -X GET "$API_URL/api/auth/users?page=$page&page_size=$page_size" \
+      -H "Authorization: Bearer $ADMIN_TOKEN" 2>/dev/null || echo "")
+
+    if [[ -z "$response" ]]; then
+      print_status "error" "Failed to fetch users."
+      pause_screen
+      return
+    fi
+
+    local action
+    action=$(echo "$response" | python3 - <<'PY'
+import curses
+import json
+import sys
+
+def render(stdscr, payload):
+    curses.curs_set(0)
+    height, width = stdscr.getmaxyx()
+    items = payload.get("items", [])
+    total = payload.get("total", 0)
+    page = payload.get("page", 1)
+    page_size = payload.get("page_size", len(items) or 1)
+    start_idx = (page - 1) * page_size + 1 if total else 0
+    end_idx = start_idx + len(items) - 1 if items else 0
+
+    header = f"Users (page {page}, {len(items)} shown)"
+    footer = f"Showing {start_idx}-{end_idx} of {total}" if total else "No users found"
+    instructions = "←/h/p prev • →/l/n next • q to quit"
+
+    while True:
+        stdscr.clear()
+        stdscr.addnstr(0, 0, header.ljust(width - 1), width - 1, curses.A_BOLD)
+        stdscr.addnstr(1, 0, footer.ljust(width - 1), width - 1)
+        stdscr.addnstr(2, 0, instructions.ljust(width - 1), width - 1)
+        stdscr.addnstr(3, 0, "-" * (width - 1), width - 1)
+
+        if not items:
+            stdscr.addnstr(5, 0, "No users to display.".ljust(width - 1), width - 1)
+        else:
+            stdscr.addnstr(4, 0, "ID   Username          Role   Created".ljust(width - 1), width - 1)
+            stdscr.addnstr(5, 0, "-" * (width - 1), width - 1)
+            for idx, row in enumerate(items):
+                role = "admin" if row.get("is_admin") else "user"
+                created = row.get("created_at", "unknown")
+                username = row.get("username", "")
+                identifier = row.get("id", "")
+                line = f"#{identifier:>3} {username:<18} {role:<6} {created}"
+                stdscr.addnstr(6 + idx, 0, line.ljust(width - 1), width - 1)
+
+        stdscr.refresh()
+        key = stdscr.getch()
+
+        if key in (ord('q'), 27):
+            return "quit"
+        if key in (curses.KEY_RIGHT, ord('l'), ord('n')):
+            return "next"
+        if key in (curses.KEY_LEFT, ord('h'), ord('p')):
+            return "prev"
+
+    return "quit"
+
+try:
+    payload = json.loads(sys.stdin.read() or "{}")
+except json.JSONDecodeError:
+    print("quit")
+    sys.exit(0)
+
+print(curses.wrapper(render, payload))
+PY
+)
+
+    case "$action" in
+      next)
+        ((page++))
+        ;;
+      prev)
+        if (( page > 1 )); then
+          ((page--))
+        else
+          print_status "info" "Already on first page."
+          sleep 1
+        fi
+        ;;
+      quit|"")
+        break
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
 }
 
 # Interactive menu (original behavior)
@@ -332,7 +601,7 @@ interactive_menu() {
     read -r -p "Enter selection [0-7]: " choice
     
     case $choice in
-      1) view_pending_requests ;;
+      1) pending_requests_screen ;;
       2) approve_request ;;
       3) deny_request ;;
       4) view_users ;;
@@ -445,8 +714,36 @@ deny_request_cli() {
 }
 
 view_users_cli() {
-  echo "Users endpoint not implemented in API. Check database directly:"
-  echo "docker-compose exec postgres psql -U melvin -d melvin -c \"SELECT username, created_at FROM users;\""
+  local page="${1:-1}"
+  local page_size="${2:-25}"
+
+  if [[ -z "$ADMIN_TOKEN" ]]; then
+    echo "Authentication required to view users."
+    echo ""
+    login_admin_interactive
+    if [[ -z "$ADMIN_TOKEN" ]]; then
+      echo "Error: Authentication failed."
+      exit 1
+    fi
+  fi
+
+  local response
+  response=$(curl -fsS -X GET "$API_URL/api/auth/users?page=$page&page_size=$page_size" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" 2>/dev/null || echo "")
+
+  if [[ -z "$response" ]]; then
+    echo "Error: Failed to fetch users."
+    exit 1
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    echo "$response" | jq -r '
+      "Page \(.page) (\(.page_size) per page) — total: \(.total)",
+      (.items[] | "#\(.id) \(.username) (\(if .is_admin then \"admin\" else \"user\" end)) created: \(.created_at)")
+    '
+  else
+    echo "$response"
+  fi
 }
 
 create_admin_interactive() {

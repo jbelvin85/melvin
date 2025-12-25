@@ -145,13 +145,11 @@ show_users_tab() {
   echo ""
   echo -e "${WHITE}USER & ACCOUNT MANAGEMENT${NC}"
   draw_divider
-  draw_menu_item 1 "View Pending Account Requests"
-  draw_menu_item 2 "Approve Account Request"
-  draw_menu_item 3 "Deny Account Request"
-  draw_menu_item 4 "Create User Account Manually"
-  draw_menu_item 5 "List All Users"
-  draw_menu_item 6 "Reset Admin Password"
-  draw_menu_item 7 "Manage User Permissions"
+  draw_menu_item 1 "Manage Pending Requests (view/select/approve/deny)"
+  draw_menu_item 2 "Create User Account Manually"
+  draw_menu_item 3 "List All Users"
+  draw_menu_item 4 "Reset Admin Password"
+  draw_menu_item 5 "Manage User Permissions"
   echo ""
   draw_menu_item 0 "Back to Main Menu"
 }
@@ -360,29 +358,17 @@ handle_users_action() {
   case $1 in
     1)
       echo -e "\n${CYAN}Fetching pending requests...${NC}"
-      bash "$REPO_ROOT/scripts/manage_accounts.sh" list
+      bash "$REPO_ROOT/scripts/manage_accounts.sh" pending
       ;;
     2)
-      echo -e "\n${CYAN}Approve Account Request${NC}"
-      echo "Request ID:"
-      read -r req_id
-      bash "$REPO_ROOT/scripts/manage_accounts.sh" approve "$req_id"
-      ;;
-    3)
-      echo -e "\n${CYAN}Deny Account Request${NC}"
-      echo "Request ID:"
-      read -r req_id
-      bash "$REPO_ROOT/scripts/manage_accounts.sh" deny "$req_id"
-      ;;
-    4)
       echo -e "\n${CYAN}Creating new admin account...${NC}"
       bash "$REPO_ROOT/scripts/manage_accounts.sh" create-admin
       ;;
-    5)
+    3)
       echo -e "\n${CYAN}Listing all users...${NC}"
-      bash "$REPO_ROOT/scripts/manage_accounts.sh" list-users
+      bash "$REPO_ROOT/scripts/manage_accounts.sh" users
       ;;
-    6)
+    4)
       echo -e "\n${CYAN}Admin Password Reset${NC}"
       read -r -p "Enter admin username: " admin_user
       read -r -s -p "New password (min 8 chars): " new_pass
@@ -400,7 +386,7 @@ handle_users_action() {
         echo -e "${GREEN}Password updated for $admin_user${NC}"
       fi
       ;;
-    7)
+    5)
       echo -e "\n${CYAN}User Permissions Management${NC}"
       echo "Select permission to manage:"
       echo "  1. View user permissions"
@@ -424,9 +410,12 @@ handle_users_action() {
         3)
           read -r -p "Username: " user
           read -r -p "Permission to revoke: " perm
-          echo -e "${GREEN}Permission '$perm' revoked from $user${NC}"
-          ;;
-      esac
+        echo -e "${GREEN}Permission '$perm' revoked from $user${NC}"
+        ;;
+    esac
+      ;;
+    *)
+      echo -e "${RED}Invalid choice for Users tab${NC}"
       ;;
   esac
 }
