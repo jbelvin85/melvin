@@ -1,0 +1,45 @@
+Title: Magic: The Gathering Basics
+
+1. What Magic: The Gathering Is
+Magic: The Gathering (MTG) is a strategic trading card game where players act as Planeswalkers—powerful spellcasters who build decks and duel by casting spells, summoning creatures, and outmaneuvering opponents. The usual objective is to reduce the opponent’s life total to zero.
+
+2. Setup: Preparing to Play
+- Shuffle your deck and place it face-down as your Library.
+- Draw seven cards as your opening Hand.
+- Decide who plays first. The first player skips the draw step on their first turn.
+- Track life totals (normally 20 in most formats).
+- If dissatisfied with the opening hand, use the current mulligan procedure.
+
+3. Card Types (High Level)
+- Lands: Provide mana, the resource for casting spells. One land per turn, and lands are not spells.
+- Creatures: Permanents that can attack and block.
+- Instants and Sorceries: One-time effects; instants can be cast at almost any time, sorceries only during your main phases when the stack is empty.
+- Artifacts and Enchantments: Permanents that remain on the battlefield and grant ongoing effects.
+- Planeswalkers: Special permanents with loyalty abilities.
+
+4. Casting Spells
+- Pay the mana cost shown in the upper-right corner. Use lands (tap for mana) or other sources as required.
+- After paying the cost, instants and sorceries resolve and go to the graveyard; permanent spells enter the battlefield if they resolve.
+
+5. Turn Structure
+- Beginning Phase: Untap permanents, handle upkeep triggers, draw one card (except for the first player on their first turn).
+- First Main Phase: Play a land (if you haven’t already) and cast spells.
+- Combat Phase: Declare attackers, declare blockers, deal combat damage.
+- Second Main Phase: Like the first main phase (play spells/lands as allowed).
+- End Step/Cleanup: Resolve “end of turn” effects, remove damage from creatures, discard to maximum hand size.
+
+6. Combat Overview
+- Declare Attackers: Choose untapped creatures and tap them to attack the opponent or planeswalkers.
+- Declare Blockers: Defending player assigns blockers to attacking creatures.
+- Combat Damage: Attacking and blocking creatures deal damage simultaneously. Unblocked attackers deal damage to the defending player or planeswalker. Creatures with damage ≥ toughness are destroyed.
+
+7. Ending the Game (Standard Two-Player Rules)
+- Reduce an opponent’s life total to zero.
+- Force them to draw from an empty library.
+- Some cards create alternate win/lose conditions.
+
+8. Next Steps and Learning More
+- Play games—experience reinforces the rules quickly.
+- Use the official keyword glossary for evergreen and set-specific terms.
+- Search Gatherer/Scryfall for card rulings and templating.
+- MTG Arena and official tutorials provide guided onboarding.

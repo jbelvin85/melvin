@@ -55,8 +55,21 @@ The assistant also needs to analyze card interactions, detect infinite loops, an
 ## Data Handling Notes
 - Keep original dumps under `data/raw/` (local-only; gitignored due to size). Treat derived embeddings as build artifacts (ignored by git, reproduced via scripts under `data/processed/`).
 - `scripts/melvin.sh launch` calls the Scryfall bulk API to refresh Oracle/rulings dumps automatically; if offline, drop those files into `data/raw/` manually.
+- The setup script also ensures the configured Ollama model (`OLLAMA_MODEL`) is available by invoking `ollama pull` inside the Ollama container before starting the API.
+- Curated teaching/reference blurbs (e.g., “How to Play MTG,” Commander rules digest) live under `data/reference/` and are included in the ingestion run so Melvin can cite them alongside the Comprehensive Rules.
 - Implement chunk metadata linking back to source rule IDs and card identifiers.
 - Cache Scryfall lookups to respect rate limits.
+- The launch script automatically triggers the `/ingest` endpoint after the API becomes healthy so the latest raw/reference data are embedded at each run.
+- Every ingestion pass now also emits structured metadata under `data/processed/knowledge/card_metadata.json`. Each entry captures color identity, mana cost, keywords, produced mana, inferred rule references, and linked rulings for that Oracle ID. This metadata is loaded by the API at runtime and fed into Melvin’s context so he can reason about legality, commander identity, and recent rulings without re-parsing raw card text.
+- Users can “tag” cards inline by wrapping their names in square brackets (e.g., `[Hullbreacher]`) inside any chat message. The backend resolves those tags against the local Oracle dump, validates that the cards exist, and injects their summaries plus structured metadata into the LLM prompt. The React composer hints at this syntax and the context drawer shows exactly which tagged cards were added.
+- The knowledge store is exposed via `backend/app/services/knowledge.py` for future tooling (combo detectors, rule cross-references, format checkers). When adding new data-driven helpers, prefer storing compact JSON snapshots alongside the embeddings so containers can reload them quickly during startup.
+
+## Hallucination Controls
+- The API verifies every tagged or auto-detected card name against the local Oracle dump. Unknown cards trigger a warning that is surfaced both in the reasoning panel and in the assistant’s reply, rather than allowing the LLM to guess.
+- Rule references (e.g., `123.4a`) are checked against the Comprehensive Rules snapshot. Missing IDs generate a warning so users know the citation could not be validated.
+- Before invoking the LLM, the service confirms that at least one source of grounded context (rules, cards, rulings, reference blurbs, or knowledge graph entries) was retrieved. If nothing relevant turns up, Melvin returns a fallback message asking for clarification instead of fabricating an answer.
+- Every response now carries an explicit “Sources” block listing the exact corpora (rule IDs, card names, reference files) that were injected into the prompt. The chat drawer mirrors that context so operators can audit grounding easily.
+- Deterministic helpers (rule engine checks, knowledge store metadata) continue to run alongside the LLM, and their outputs are appended to the prompt verbatim. When those tools fail or lack data, the response includes a warning so users know which checks could not be completed.
 
 ## Near-Term Engineering Tasks
 - [ ] Define exact LLM hosting approach (model + runtime) that satisfies open-source constraint.

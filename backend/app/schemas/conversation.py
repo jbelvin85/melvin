@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ConversationCreate(BaseModel):
@@ -13,20 +13,32 @@ class ConversationOut(BaseModel):
     title: str
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Message(BaseModel):
     sender: str
     content: str
     created_at: datetime
+    thinking: Optional[List["ThinkingStep"]] = None
+    context: Optional[dict] = None
 
 
 class MessageCreate(BaseModel):
     question: str = Field(..., min_length=3)
+    tone: str | None = None
+    detail_level: str | None = None
+    card_names: List[str] | None = None
 
 
 class ConversationDetail(BaseModel):
     conversation: ConversationOut
     messages: List[Message]
+
+
+class ThinkingStep(BaseModel):
+    label: str
+    detail: str
+
+
+Message.model_rebuild()

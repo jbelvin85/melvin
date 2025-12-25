@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     secret_key: str = "change-me"
     data_root: Path = Path(__file__).resolve().parents[3] / "data"
     raw_data_dir: Path = Path(__file__).resolve().parents[3] / "data" / "raw"
+    reference_data_dir: Path = Path(__file__).resolve().parents[3] / "data" / "reference"
     processed_data_dir: Path = Path(__file__).resolve().parents[3] / "data" / "processed"
     frontend_dist: Path | None = None
 

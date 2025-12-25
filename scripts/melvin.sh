@@ -343,6 +343,15 @@ wait_for_api() {
   done
 }
 
+run_data_ingest() {
+  echo "[melvin] Refreshing embeddings via API /ingest..."
+  if docker compose exec -T api curl -X POST http://localhost:8000/ingest; then
+    echo "[melvin] Embedding stores refreshed."
+  else
+    echo "[melvin] Failed to refresh embeddings. Check API logs or rerun 'docker compose exec api curl -X POST http://localhost:8000/ingest'."
+  fi
+}
+
 create_admin_account() {
   local username="$1"
   local password="$2"
@@ -405,11 +414,53 @@ check_and_install_python() {
   fi
 }
 
+get_ollama_model_name() {
+  local env_value="${OLLAMA_MODEL:-}"
+  if [[ -n "$env_value" ]]; then
+    echo "$env_value"
+    return
+  fi
+  local files=("$ENV_FILE" "$REPO_ROOT/.env" "$REPO_ROOT/.env.example")
+  for file in "${files[@]}"; do
+    if [[ -f "$file" ]]; then
+      local value
+      value="$(grep -E '^OLLAMA_MODEL=' "$file" | tail -n1 | cut -d '=' -f2- | tr -d '\"' | tr -d '[:space:]')"
+      if [[ -n "$value" ]]; then
+        echo "$value"
+        return
+      fi
+    fi
+  done
+  echo "llama2"
+}
+
+ensure_ollama_model() {
+  if ! command -v docker >/dev/null 2>&1; then
+    return
+  fi
+  local model
+  model="$(get_ollama_model_name)"
+  echo "[melvin] Ensuring Ollama model '$model' is available..."
+  if ! docker compose up -d ollama >/dev/null 2>&1; then
+    echo "[melvin] Failed to start Ollama service via docker compose."
+    return
+  fi
+  if docker compose exec -T ollama ollama list 2>/dev/null | grep -wq "$model"; then
+    echo "[melvin] Ollama model '$model' already present."
+    return
+  fi
+  if ! docker compose exec -T ollama ollama pull "$model"; then
+    echo "[melvin] Failed to pull Ollama model '$model'. Run 'docker compose exec ollama ollama pull $model' manually."
+    exit 1
+  fi
+}
+
 check_dependencies() {
   check_and_install_docker
   check_and_install_nodejs
   check_and_install_python
   require_cmd curl
+  ensure_ollama_model
 }
 
 cmd_launch_bg() {
@@ -421,6 +472,7 @@ cmd_launch_bg() {
   docker compose up --build -d
   if wait_for_api; then
     create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
+    run_data_ingest
     echo "[melvin] Melvin is running!"
     echo "Visit $API_URL to request an account or log in."
     echo "Admin login: ${INITIAL_ADMIN_USERNAME_VALUE}"
@@ -441,6 +493,7 @@ cmd_launch_fg() {
   local compose_pid=$!
   if wait_for_api; then
     create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
+    run_data_ingest
     echo "[melvin] ✓ Melvin is running at $API_URL"
   else
     echo "[melvin] API did not become healthy in time."
@@ -454,7 +507,16 @@ cmd_dev() {
   ensure_dirs
   ensure_data_files
   ensure_frontend_built
-  docker compose up --build
+  docker compose up --build &
+  local compose_pid=$!
+  if wait_for_api; then
+    create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
+    run_data_ingest
+    echo "[melvin] ✓ Dev stack is running (Ctrl+C to stop)."
+  else
+    echo "[melvin] API did not become healthy in time."
+  fi
+  wait "$compose_pid"
 }
 
 cmd_down() {

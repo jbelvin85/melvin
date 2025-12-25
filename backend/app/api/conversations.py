@@ -74,6 +74,18 @@ async def chat_with_melvin(
     if not record or record.user_id != user.id:
         raise HTTPException(status_code=404, detail="Conversation not found")
     await append_message(conversation_id, "user", payload.question)
-    response_text = get_melvin_service().answer_question(payload.question)
-    await append_message(conversation_id, "melvin", response_text)
-    return Message(sender="melvin", content=response_text, created_at=datetime.utcnow())
+    response_text, thinking_steps, context_snapshot = get_melvin_service().answer_question_with_details(
+        payload.question,
+        user=user,
+        tone=payload.tone,
+        detail_level=payload.detail_level,
+        selected_cards=payload.card_names or [],
+    )
+    await append_message(conversation_id, "melvin", response_text, thinking=thinking_steps, context=context_snapshot)
+    return Message(
+        sender="melvin",
+        content=response_text,
+        created_at=datetime.utcnow(),
+        thinking=thinking_steps,
+        context=context_snapshot,
+    )
