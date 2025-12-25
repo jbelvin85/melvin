@@ -44,6 +44,20 @@ type ModelOptions = {
   available: string[];
 };
 
+type ModelPreference = {
+  preferred_model: string | null;
+  effective_model: string;
+};
+
+type UserModelPreference = {
+  id: number;
+  username: string;
+  is_admin: boolean;
+  created_at: string;
+  preferred_model: string | null;
+  effective_model: string;
+};
+
 type TabKey = 'chat' | 'tools' | 'profile' | 'settings';
 type MessageContext = {
   rules?: string;
@@ -136,12 +150,18 @@ function App() {
   const [adminStatus, setAdminStatus] = useState<string | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOptions | null>(null);
   const [modelStatus, setModelStatus] = useState<string | null>(null);
+  const [modelPreference, setModelPreference] = useState<ModelPreference | null>(null);
+  const [modelPreferenceStatus, setModelPreferenceStatus] = useState<string | null>(null);
+  const [userModelPrefs, setUserModelPrefs] = useState<UserModelPreference[]>([]);
+  const [userModelPrefsStatus, setUserModelPrefsStatus] = useState<string | null>(null);
+  const [updatingUserModelId, setUpdatingUserModelId] = useState<number | null>(null);
   const [profileSummary, setProfileSummary] = useState<ProfileSummary | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [showAssessment, setShowAssessment] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const defaultModelOptionValue = '__DEFAULT_MODEL_OPTION__';
 
   const resetSession = useCallback((message?: string) => {
     setToken(null);
@@ -162,6 +182,11 @@ function App() {
     setCardSearchLoading(false);
     setInsightOpen(false);
     setInsightMessage(null);
+    setModelPreference(null);
+    setModelPreferenceStatus(null);
+    setUserModelPrefs([]);
+    setUserModelPrefsStatus(null);
+    setUpdatingUserModelId(null);
     if (message) {
       setAdminStatus(message);
     } else {
@@ -200,7 +225,7 @@ function App() {
   }, [authHeaders, handleAuthError, token]);
 
   const loadModelOptions = useCallback(async () => {
-    if (!token || !isAdmin) return;
+    if (!token) return;
     setModelStatus(null);
     try {
       const response = await api.get<ModelOptions>('/models/ollama', authHeaders);
@@ -209,6 +234,62 @@ function App() {
       if (!handleAuthError(error, 'Failed to load model list')) {
         setModelStatus('Could not load available models from Ollama.');
       }
+    }
+  }, [authHeaders, handleAuthError, token]);
+
+  const loadModelPreference = useCallback(async () => {
+    if (!token) return;
+    try {
+      const response = await api.get<ModelPreference>('/models/preferences/me', authHeaders);
+      setModelPreference(response.data);
+      setModelPreferenceStatus(null);
+    } catch (error) {
+      if (!handleAuthError(error)) {
+        setModelPreferenceStatus('Failed to load model preference.');
+      }
+    }
+  }, [authHeaders, handleAuthError, token]);
+
+  const saveModelPreference = useCallback(async (value: string | null) => {
+    if (!token) return;
+    setModelPreferenceStatus('Saving preference...');
+    try {
+      const response = await api.post<ModelPreference>('/models/preferences/me', { model: value }, authHeaders);
+      setModelPreference(response.data);
+      setModelPreferenceStatus(value ? `Preference saved (${value}).` : 'Preference cleared. Using default model.');
+    } catch (error) {
+      if (!handleAuthError(error, 'Failed to save preference')) {
+        setModelPreferenceStatus('Failed to save preference.');
+      }
+    }
+  }, [authHeaders, handleAuthError, token]);
+
+  const loadUserModelPrefs = useCallback(async () => {
+    if (!token || !isAdmin) return;
+    try {
+      const response = await api.get<UserModelPreference[]>('/models/preferences/users', authHeaders);
+      setUserModelPrefs(response.data);
+      setUserModelPrefsStatus(null);
+    } catch (error) {
+      if (!handleAuthError(error, 'Failed to load user model preferences')) {
+        setUserModelPrefsStatus('Failed to load user preferences.');
+      }
+    }
+  }, [authHeaders, handleAuthError, isAdmin, token]);
+
+  const updateUserModelPreference = useCallback(async (userId: number, value: string | null) => {
+    if (!token || !isAdmin) return;
+    setUpdatingUserModelId(userId);
+    try {
+      const response = await api.post<UserModelPreference>(`/models/preferences/users/${userId}`, { model: value }, authHeaders);
+      setUserModelPrefs((prev) => prev.map((entry) => (entry.id === userId ? response.data : entry)));
+      setUserModelPrefsStatus(value ? 'Updated user preference.' : 'Cleared user preference.');
+    } catch (error) {
+      if (!handleAuthError(error, 'Failed to update user model preference')) {
+        setUserModelPrefsStatus('Failed to update user preference.');
+      }
+    } finally {
+      setUpdatingUserModelId(null);
     }
   }, [authHeaders, handleAuthError, isAdmin, token]);
 
@@ -248,17 +329,33 @@ function App() {
   useEffect(() => {
     if (token) {
       const payload = decodeToken(token);
-      setIsAdmin(payload?.admin ?? false);
+      const adminFlag = payload?.admin ?? false;
+      setIsAdmin(adminFlag);
       setUserName(payload?.username ?? null);
       loadConversations();
-      if (payload?.admin) {
+      loadModelOptions();
+      loadModelPreference();
+      if (adminFlag) {
         loadPendingRequests();
-        loadModelOptions();
+        loadUserModelPrefs();
+      } else {
+        setPendingRequests([]);
+        setUserModelPrefs([]);
       }
     } else {
       setUserName(null);
+      setIsAdmin(false);
+      setModelPreference(null);
+      setUserModelPrefs([]);
     }
-  }, [loadConversations, loadModelOptions, loadPendingRequests, token]);
+  }, [
+    loadConversations,
+    loadModelOptions,
+    loadModelPreference,
+    loadPendingRequests,
+    loadUserModelPrefs,
+    token,
+  ]);
 
   useEffect(() => {
     if (token && activeTab === 'profile') {
@@ -412,6 +509,16 @@ function App() {
       }
     }
     setIsThinking(false);
+  };
+
+  const handleModelPreferenceSelect = (value: string) => {
+    const normalized = value === defaultModelOptionValue ? null : value;
+    saveModelPreference(normalized);
+  };
+
+  const handleAdminModelPreferenceSelect = (userId: number, value: string) => {
+    const normalized = value === defaultModelOptionValue ? null : value;
+    updateUserModelPreference(userId, normalized);
   };
 
   const handleApprove = async (requestId: number) => {
@@ -790,11 +897,55 @@ function App() {
             <p className="text-sm text-slate-400">These preferences are attached to your future Melvin conversations.</p>
           </div>
 
+          <div className="bg-slate-900 p-6 rounded-lg shadow space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Model Preference</h2>
+              <button className="text-sm underline" onClick={() => { loadModelOptions(); loadModelPreference(); }}>
+                Refresh
+              </button>
+            </div>
+            <p className="text-sm text-slate-400">
+              Choose which Ollama model Melvin should use for your conversations. Selecting &quot;Use Melvin default&quot; honors the global configuration.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2 items-end">
+              <label className="flex flex-col gap-2 text-sm text-slate-300">
+                Model for my chats
+                <select
+                  className="p-3 rounded bg-slate-800 text-white"
+                  value={modelPreference?.preferred_model ?? defaultModelOptionValue}
+                  onChange={(e) => handleModelPreferenceSelect(e.target.value)}
+                  disabled={!modelOptions}
+                >
+                  <option value={defaultModelOptionValue}>
+                    Use Melvin default {modelOptions ? `(${modelOptions.current})` : ''}
+                  </option>
+                  {modelOptions?.available.map((name) => (
+                    <option key={`self-${name}`} value={name}>{name}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="space-y-2 text-sm text-slate-300">
+                <p>
+                  Effective model:{' '}
+                  <span className="font-semibold">{modelPreference?.effective_model ?? modelOptions?.current ?? '...'}</span>
+                </p>
+                <button
+                  className="text-slate-400 underline disabled:opacity-50"
+                  onClick={() => saveModelPreference(null)}
+                  disabled={!modelPreference?.preferred_model}
+                >
+                  Reset to default
+                </button>
+              </div>
+            </div>
+            {modelPreferenceStatus && <p className="text-xs text-slate-400">{modelPreferenceStatus}</p>}
+          </div>
+
           {isAdmin && (
-            <section className="space-y-4">
+            <>
               <div className="bg-slate-900 p-6 rounded-lg shadow space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Model Selection</h2>
+                  <h2 className="text-xl font-semibold">Default Model (admins)</h2>
                   <button className="text-sm underline" onClick={loadModelOptions}>Refresh</button>
                 </div>
                 {modelStatus && <p className="text-sm text-red-300">{modelStatus}</p>}
@@ -812,6 +963,8 @@ function App() {
                             const response = await api.post<ModelOptions>('/models/ollama', { model: next }, authHeaders);
                             setModelOptions(response.data);
                             setModelStatus(`Model switched to ${next}`);
+                            await loadModelPreference();
+                            await loadUserModelPrefs();
                           } catch (error) {
                             if (!handleAuthError(error, 'Failed to switch model')) {
                               setModelStatus('Model change failed.');
@@ -820,7 +973,7 @@ function App() {
                         }}
                       >
                         {modelOptions.available.map((name) => (
-                          <option key={name} value={name}>{name}</option>
+                          <option key={`global-${name}`} value={name}>{name}</option>
                         ))}
                       </select>
                     </label>
@@ -831,6 +984,49 @@ function App() {
                   </div>
                 ) : (
                   <p className="text-slate-400 text-sm">Loading model list...</p>
+                )}
+              </div>
+
+              <div className="bg-slate-900 p-6 rounded-lg shadow space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">User overrides</h2>
+                  <button className="text-sm underline" onClick={loadUserModelPrefs}>Refresh</button>
+                </div>
+                {userModelPrefsStatus && <p className="text-sm text-slate-300">{userModelPrefsStatus}</p>}
+                {userModelPrefs.length === 0 ? (
+                  <p className="text-slate-400 text-sm">No users found.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {userModelPrefs.map((entry) => (
+                      <div key={entry.id} className="bg-slate-800 p-4 rounded flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="font-semibold text-white flex items-center gap-2">
+                            {entry.username}
+                            {entry.is_admin && (
+                              <span className="text-xs text-blue-300 border border-blue-500 rounded-full px-2 py-0.5">Admin</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-slate-400">Effective model: {entry.effective_model}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="p-2 rounded bg-slate-900 text-white text-sm"
+                            value={entry.preferred_model ?? defaultModelOptionValue}
+                            onChange={(e) => handleAdminModelPreferenceSelect(entry.id, e.target.value)}
+                            disabled={!modelOptions || updatingUserModelId === entry.id}
+                          >
+                            <option value={defaultModelOptionValue}>
+                              Use default {modelOptions ? `(${modelOptions.current})` : ''}
+                            </option>
+                            {modelOptions?.available.map((name) => (
+                              <option key={`pref-${entry.id}-${name}`} value={name}>{name}</option>
+                            ))}
+                          </select>
+                          {updatingUserModelId === entry.id && <span className="text-xs text-slate-400">Saving…</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -856,7 +1052,7 @@ function App() {
                   ))}
                 </div>
               </div>
-            </section>
+            </>
           )}
         </section>
       )}
@@ -905,6 +1101,7 @@ function App() {
                     { label: 'State snapshot', key: 'state' },
                     { label: 'Rule-engine tools', key: 'tools' },
                     { label: 'External card notes', key: 'external_cards' },
+                    { label: 'Model used', key: 'model' },
                   ].map((section) => {
                     const value = (insightMessage.context as Record<string, unknown>)[section.key];
                     const formatted = typeof value === 'string'

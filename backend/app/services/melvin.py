@@ -43,6 +43,7 @@ class MelvinService:
 
         self.model_name = self._load_model_choice(default_model=settings.ollama_model)
         self.llm = Ollama(model=self.model_name, base_url=self._ollama_base_url(settings))
+        self._llm_cache: dict[str, Ollama] = {self.model_name: self.llm}
         self.prompt = ChatPromptTemplate.from_template(
             """Answer the question based only on the following context:
 Rules: {rules_context}
@@ -140,7 +141,22 @@ Question: {question}
         settings = get_settings()
         self.model_name = model_name
         self.llm = Ollama(model=model_name, base_url=self._ollama_base_url(settings))
+        self._llm_cache[model_name] = self.llm
         self._save_model_choice(model_name)
+
+    def _resolve_model_for_user(self, user: Optional["User"]) -> str:
+        if user and getattr(user, "preferred_model", None):
+            return user.preferred_model  # type: ignore[return-value]
+        return self.model_name
+
+    def _get_llm_instance(self, model_name: str):
+        cached = self._llm_cache.get(model_name)
+        if cached is not None:
+            return cached
+        settings = get_settings()
+        llm = Ollama(model=model_name, base_url=self._ollama_base_url(settings))
+        self._llm_cache[model_name] = llm
+        return llm
 
     def _extract_tagged_cards(self, text: str) -> List[str]:
         pattern = re.compile(r"\[([^\[\]]{2,120})\]")
@@ -476,6 +492,7 @@ Question: {question}
             return answer_text, thinking, context_snapshot
 
         prompt_input = self._prepare_prompt_input(payload)
+        model_for_request = self._resolve_model_for_user(user)
         context_snapshot = {
             "rules": prompt_input.get("rules_context", ""),
             "cards": prompt_input.get("cards_context", ""),
@@ -486,12 +503,14 @@ Question: {question}
             "state": payload.get("state_context") or "",
             "tools": payload.get("tools_context") or "",
             "external_cards": payload.get("external_cards_context") or "",
+            "model": model_for_request,
         }
         prompt_value = self.prompt.format_prompt(**prompt_input)
-        llm_response = self.llm.invoke(prompt_value.to_string())
+        llm = self._get_llm_instance(model_for_request)
+        llm_response = llm.invoke(prompt_value.to_string())
         answer_text = llm_response if isinstance(llm_response, str) else StrOutputParser().invoke(llm_response)
         answer_text = self._apply_postamble(answer_text, citations, warnings)
-        thinking.append({"label": "Final synthesis", "detail": "Generated response with llama3 via Ollama."})
+        thinking.append({"label": "Final synthesis", "detail": f"Generated response with {model_for_request} via Ollama."})
         return answer_text, thinking, context_snapshot
 
     def _prepare_prompt_input(self, payload: dict) -> dict:

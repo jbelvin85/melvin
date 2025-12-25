@@ -16,6 +16,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    preferred_model = Column(String(128), nullable=True)
     
     # Relationship to player profile
     profile = relationship("PlayerProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
