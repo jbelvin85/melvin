@@ -41,106 +41,49 @@ NC='\033[0m' # No Color
 # Constants
 UI_WIDTH=80
 UI_INNER_WIDTH=$((UI_WIDTH - 2))
-CONTENT_GAP_START=2
-CONTENT_GAP_WIDTH=0
-
-# Helpers
-pad_line() {
-  local text="$1"
-  local padding=$((UI_INNER_WIDTH - ${#text}))
-  if (( padding < 0 )); then padding=0; fi
-  printf "│%s%*s│\n" "$text" "$padding" ""
-}
-
-draw_box_top() {
-  printf "┌"
-  printf '─%.0s' $(seq 1 "$UI_INNER_WIDTH")
-  printf "┐\n"
-}
-
-draw_box_bottom() {
-  printf "└"
-  printf '─%.0s' $(seq 1 "$UI_INNER_WIDTH")
-  printf "┘\n"
-}
-
-draw_divider() {
-  printf "│"
-  printf '─%.0s' $(seq 1 "$UI_INNER_WIDTH")
-  printf "│\n"
-}
 
 # Clear screen and draw header
 draw_header() {
   clear
   local title="MELVIN - Magic: the Gathering AI Assistant"
-  local padding=$((UI_INNER_WIDTH - ${#title}))
-  if (( padding < 0 )); then padding=0; fi
-  local spaces
-  printf -v spaces "%*s" "$padding" ""
   echo "╔════════════════════════════════════════════════════════════════════════════╗"
-  echo "║ ${title}${spaces} ║"
+  printf "║ %-74s ║\n" "$title"
   echo "╚════════════════════════════════════════════════════════════════════════════╝"
 }
 
 draw_tabs() {
   local active_idx=$CURRENT_TAB
-  local active_label="${TABS[$active_idx]}"
-  local box_width=$(( ${#active_label} + 4 ))
-  if (( box_width < 10 )); then box_width=10; fi
-
-  local line1="  ┌$(printf '─%.0s' $(seq 1 $((box_width-2))))┐"
-  printf "%-${UI_WIDTH}s\n" "$line1"
-
-  local indent="  "
-  local line2="$indent"
-  local pos=${#indent}
+  local line=""
   for i in "${!TABS[@]}"; do
     if [[ $i -eq $active_idx ]]; then
-      local tab_text="│ $(printf '%-*s' $((box_width-4)) "$active_label") │"
-      CONTENT_GAP_START=$pos
-      CONTENT_GAP_WIDTH=${#tab_text}
-      line2+="$tab_text "
-      pos=$((pos + ${#tab_text} + 1))
+      line+="${YELLOW}[${TAB_KEYS[$i]^}:${TABS[$i]}]${NC} "
     else
-      local segment="[${TAB_KEYS[$i]^}:${TABS[$i]}] "
-      line2+="$segment"
-      pos=$((pos + ${#segment}))
+      line+="${GRAY}[${TAB_KEYS[$i]^}:${TABS[$i]}]${NC} "
     fi
   done
-  line2="${line2% }"
-  printf "%-${UI_WIDTH}s\n" "$line2"
+  echo -e "$line"
 }
 
-draw_content_top() {
-  local gap_start=${CONTENT_GAP_START:-2}
-  local gap_width=${CONTENT_GAP_WIDTH:-0}
-  if (( gap_start < 2 )); then gap_start=2; fi
-  local left="┌"
-  local prefix_len=$((gap_start - 2))
-  local prefix=""
-  if (( prefix_len > 0 )); then
-    prefix=$(printf '─%.0s' $(seq 1 "$prefix_len"))
-  fi
-  local gap=$(printf '%*s' "$gap_width" "")
-  local suffix_len=$((UI_WIDTH - 1 - (gap_start + gap_width - 1)))
-  if (( suffix_len < 0 )); then suffix_len=0; fi
-  local suffix=$(printf '─%.0s' $(seq 1 "$suffix_len"))
-  local right="┐"
-  printf "%s%s%s%s%s\n" "$left" "$prefix" "$gap" "$suffix" "$right"
+draw_divider() {
+  printf "%s\n" "────────────────────────────────────────────────────────────────────────────────"
 }
 
 draw_menu_item() {
   local num=$1
   local label=$2
-  local width=$((UI_INNER_WIDTH - 6))
-  printf "│  %-2d • %-*s │\n" "$num" "$width" "$label"
+  printf "  %-2d • %s\n" "$num" "$label"
+}
+
+draw_menu_item() {
+  local num=$1
+  local label=$2
+  printf "  %-2d • %s\n" "$num" "$label"
 }
 
 # Tab 0: SYSTEM
 show_system_tab() {
-  pad_line ""
-  pad_line "SYSTEM INFORMATION & DEPENDENCIES"
+  echo ""
+  echo -e "${WHITE}SYSTEM INFORMATION & DEPENDENCIES${NC}"
   draw_divider
   draw_menu_item 1 "Check System Dependencies (Docker, Node, Python, curl)"
   draw_menu_item 2 "Install Missing Dependencies"
@@ -148,30 +91,28 @@ show_system_tab() {
   draw_menu_item 4 "View Docker Container Status"
   draw_menu_item 5 "View API Health Status"
   draw_menu_item 6 "View Environment Configuration"
-  pad_line ""
+  echo ""
   draw_menu_item 0 "Back to Main Menu"
-  draw_box_bottom
 }
 
 # Tab 1: SETUP
 show_setup_tab() {
-  pad_line ""
-  pad_line "SETUP & CONFIGURATION"
+  echo ""
+  echo -e "${WHITE}SETUP & CONFIGURATION${NC}"
   draw_divider
   draw_menu_item 1 "Initialize Environment (.env Configuration)"
   draw_menu_item 2 "Verify/Download Required Data Files"
   draw_menu_item 3 "Configure Redis Cache Service"
   draw_menu_item 4 "Edit Environment Variables"
   draw_menu_item 5 "Reset Configuration to Defaults"
-  pad_line ""
+  echo ""
   draw_menu_item 0 "Back to Main Menu"
-  draw_box_bottom
 }
 
 # Tab 2: DEPLOYMENT
 show_deployment_tab() {
-  pad_line ""
-  pad_line "DEPLOYMENT & SERVICES"
+  echo ""
+  echo -e "${WHITE}DEPLOYMENT & SERVICES${NC}"
   draw_divider
   draw_menu_item 1 "Launch Full Stack (Background)"
   draw_menu_item 2 "Launch Full Stack (Foreground - Debug Mode)"
@@ -180,15 +121,14 @@ show_deployment_tab() {
   draw_menu_item 5 "Stop All Services"
   draw_menu_item 6 "Restart Services"
   draw_menu_item 7 "View Service Logs"
-  pad_line ""
+  echo ""
   draw_menu_item 0 "Back to Main Menu"
-  draw_box_bottom
 }
 
 # Tab 3: DATABASE
 show_database_tab() {
-  pad_line ""
-  pad_line "DATABASE & MIGRATIONS"
+  echo ""
+  echo -e "${WHITE}DATABASE & MIGRATIONS${NC}"
   draw_divider
   draw_menu_item 1 "Run Database Migrations"
   draw_menu_item 2 "Backup Postgres & MongoDB"
@@ -196,15 +136,14 @@ show_database_tab() {
   draw_menu_item 4 "Restore from Backup"
   draw_menu_item 5 "Connect to Postgres CLI"
   draw_menu_item 6 "Connect to MongoDB CLI"
-  pad_line ""
+  echo ""
   draw_menu_item 0 "Back to Main Menu"
-  draw_box_bottom
 }
 
 # Tab 4: USERS
 show_users_tab() {
-  pad_line ""
-  pad_line "USER & ACCOUNT MANAGEMENT"
+  echo ""
+  echo -e "${WHITE}USER & ACCOUNT MANAGEMENT${NC}"
   draw_divider
   draw_menu_item 1 "View Pending Account Requests"
   draw_menu_item 2 "Approve Account Request"
@@ -213,15 +152,14 @@ show_users_tab() {
   draw_menu_item 5 "List All Users"
   draw_menu_item 6 "Reset Admin Password"
   draw_menu_item 7 "Manage User Permissions"
-  pad_line ""
+  echo ""
   draw_menu_item 0 "Back to Main Menu"
-  draw_box_bottom
 }
 
 # Tab 5: MAINTENANCE
 show_maintenance_tab() {
-  pad_line ""
-  pad_line "MAINTENANCE & UTILITIES"
+  echo ""
+  echo -e "${WHITE}MAINTENANCE & UTILITIES${NC}"
   draw_divider
   draw_menu_item 1 "Run Evaluation Harness"
   draw_menu_item 2 "Clean Up Docker Resources"
@@ -229,9 +167,8 @@ show_maintenance_tab() {
   draw_menu_item 4 "Performance Monitoring"
   draw_menu_item 5 "Rebuild Docker Images"
   draw_menu_item 6 "Reset Everything to Factory Defaults"
-  pad_line ""
+  echo ""
   draw_menu_item 0 "Back to Main Menu"
-  draw_box_bottom
 }
 
 show_current_tab() {
@@ -538,7 +475,6 @@ main_loop() {
   while true; do
     draw_header
     draw_tabs
-    draw_content_top
     show_current_tab
     echo ""
     read -r -p "Enter a selection: " choice
