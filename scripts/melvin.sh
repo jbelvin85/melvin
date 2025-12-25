@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 DATA_DIR="$REPO_ROOT/data"
 RAW_DATA_DIR="$DATA_DIR/raw"
 PROCESSED_DIR="$DATA_DIR/processed"
+LOG_DIR="$REPO_ROOT/logs"
 ENV_FILE="$REPO_ROOT/.env"
 FRONTEND_DIR="$REPO_ROOT/frontend"
 API_URL="http://localhost:8001"
@@ -22,7 +23,7 @@ ensure_env() {
 }
 
 ensure_dirs() {
-  mkdir -p "$RAW_DATA_DIR" "$PROCESSED_DIR" "$REPO_ROOT/backups"
+  mkdir -p "$RAW_DATA_DIR" "$PROCESSED_DIR" "$REPO_ROOT/backups" "$LOG_DIR"
 }
 
 require_cmd() {
@@ -343,13 +344,31 @@ wait_for_api() {
   done
 }
 
-run_data_ingest() {
+run_data_ingest_sync() {
   echo "[melvin] Refreshing embeddings via API /ingest..."
   if docker compose exec -T api curl -X POST http://localhost:8000/ingest; then
     echo "[melvin] Embedding stores refreshed."
   else
     echo "[melvin] Failed to refresh embeddings. Check API logs or rerun 'docker compose exec api curl -X POST http://localhost:8000/ingest'."
   fi
+}
+
+run_data_ingest_async() {
+  ensure_dirs
+  local log_file="$LOG_DIR/ingest-$(date +%Y%m%d-%H%M%S).log"
+  echo "[melvin] Refreshing embeddings via API /ingest (background). Logs: $log_file"
+  (
+    echo "[melvin] Ingest job started at $(date)"
+    if docker compose exec -T api curl -X POST http://localhost:8000/ingest; then
+      echo "[melvin] Embedding stores refreshed."
+    else
+      echo "[melvin] Failed to refresh embeddings. Check API logs or rerun 'docker compose exec api curl -X POST http://localhost:8000/ingest'."
+    fi
+    echo "[melvin] Ingest job finished at $(date)"
+  ) &> "$log_file" &
+  local ingest_pid=$!
+  disown "$ingest_pid" 2>/dev/null || true
+  echo "[melvin] Ingest running in background (PID $ingest_pid)."
 }
 
 create_admin_account() {
@@ -472,7 +491,7 @@ cmd_launch_bg() {
   docker compose up --build -d
   if wait_for_api; then
     create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
-    run_data_ingest
+    run_data_ingest_async
     echo "[melvin] Melvin is running!"
     echo "Visit $API_URL to request an account or log in."
     echo "Admin login: ${INITIAL_ADMIN_USERNAME_VALUE}"
@@ -493,7 +512,7 @@ cmd_launch_fg() {
   local compose_pid=$!
   if wait_for_api; then
     create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
-    run_data_ingest
+    run_data_ingest_async
     echo "[melvin] ✓ Melvin is running at $API_URL"
   else
     echo "[melvin] API did not become healthy in time."
@@ -511,7 +530,7 @@ cmd_dev() {
   local compose_pid=$!
   if wait_for_api; then
     create_admin_account "$INITIAL_ADMIN_USERNAME_VALUE" "$INITIAL_ADMIN_PASSWORD_VALUE"
-    run_data_ingest
+    run_data_ingest_async
     echo "[melvin] ✓ Dev stack is running (Ctrl+C to stop)."
   else
     echo "[melvin] API did not become healthy in time."
@@ -605,7 +624,7 @@ cmd_migrate() {
 
 cmd_eval() {
   require_cmd docker
-  docker compose exec -T api python -u scripts/evaluate.py || echo "[melvin] Evaluation script failed"
+  docker compose exec -T api python -m app.services.eval_harness || echo "[melvin] Evaluation script failed"
 }
 
 cmd_accounts() {

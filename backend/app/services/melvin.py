@@ -1,8 +1,12 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, List, Tuple, Dict
+import os
 import re
 
 import threading
+
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+os.environ.setdefault("CHROMA_TELEMETRY_ENABLED", "False")
 
 from .data_loader import datastore, CardEntry
 from ..core.config import get_settings
@@ -15,6 +19,8 @@ from ..services.scryfall import scryfall_service
 from ..services.state_manager import state_manager_cls
 from .cards import card_search_service
 from .knowledge import knowledge_store
+from .mana_analyzer import explain_mana_check
+from .sequencer import analyze_sequences
 
 if TYPE_CHECKING:
     from ..models.user import User
@@ -31,11 +37,8 @@ class MelvinService:
         self.cards_db = Chroma(persist_directory=str(self.vectorstore_path / "cards"), embedding_function=self.embedding_function)
         self.rulings_db = Chroma(persist_directory=str(self.vectorstore_path / "rulings"), embedding_function=self.embedding_function)
         self.reference_db = self._load_vector_store("reference")
-
-        self.rules_retriever = self.rules_db.as_retriever()
-        self.cards_retriever = self.cards_db.as_retriever()
-        self.rulings_retriever = self.rulings_db.as_retriever()
-        self.reference_retriever = self.reference_db.as_retriever() if self.reference_db else None
+        self.retrieval_k = 6
+        self.retrieval_threshold = 0.25
         self.rule_identifiers = {rule.identifier for rule in datastore.rules}
 
         self.model_name = self._load_model_choice(default_model=settings.ollama_model)
@@ -164,6 +167,7 @@ Question: {question}
     ) -> Tuple[str, List[Dict[str, str]], Dict[str, str]]:
         explicit_cards = selected_cards or []
         thinking: List[Dict[str, str]] = []
+        citations: List[str] = []
         thinking.append({"label": "Question received", "detail": question.strip()})
         style_notes: List[str] = []
         if tone:
@@ -222,6 +226,10 @@ Question: {question}
         payload = {"question": question}
         resolved_cards: Dict[str, CardEntry] = {}
         warnings: List[str] = []
+        tools_context_parts: List[str] = []
+        commander_colors = self._parse_commander_identity(question)
+        if commander_colors:
+            tools_context_parts.append("Commander identity => " + ", ".join(commander_colors))
         if explicit_cards:
             resolved = card_search_service.resolve_cards(explicit_cards)
             if resolved:
@@ -305,8 +313,29 @@ Question: {question}
                 latest = rulings[-1]
                 lines.append(f"Latest ruling ({latest.get('published_at')}): {latest.get('comment')}")
             knowledge_sections.append("\n".join(lines))
-            if meta.get("name"):
-                knowledge_names.append(meta["name"])
+            card_name = meta.get("name")
+            if card_name:
+                knowledge_names.append(card_name)
+            colors = meta.get("color_identity") or []
+            commander_legality = (meta.get("legalities") or {}).get("commander")
+            color_text = ", ".join(colors) if colors else "colorless"
+            legality_text = commander_legality or "unknown"
+            tools_context_parts.append(f"Knowledge:color_identity {card_name} => {color_text}")
+            tools_context_parts.append(f"Knowledge:commander_legality {card_name} => {legality_text}")
+            type_line = (meta.get("type_line") or "").lower()
+            if "land" in type_line:
+                tools_context_parts.append(f"CardType:{card_name} => {meta.get('type_line','Unknown')} (play only as a land per CR 305.9)")
+            else:
+                tools_context_parts.append(f"CardType:{card_name} => {meta.get('type_line','Unknown')} (castable as a spell per CR 601)")
+            if self._requires_commander_colors(meta.get("oracle_text", "")):
+                if commander_colors:
+                    tools_context_parts.append(f"{card_name}: commander colors supplied ({', '.join(commander_colors)})")
+                else:
+                    warning = f"{card_name} references your commander's color identity. Please specify your commander's colors."
+                    if warning not in warnings:
+                        warnings.append(warning)
+        card_names_for_tools = [entry.name for entry in resolved_list if entry.name]
+
         if knowledge_sections:
             payload["knowledge_context"] = "\n\n".join(knowledge_sections)
             thinking.append({"label": "Knowledge graph", "detail": "Injected structured metadata for tagged/user-selected cards."})
@@ -315,13 +344,23 @@ Question: {question}
         if knowledge_names:
             citations.append("Knowledge graph data: " + ", ".join(knowledge_names))
 
+        mana_report = explain_mana_check(question, card_names_for_tools)
+        if mana_report:
+            tools_context_parts.append(mana_report)
+            thinking.append({"label": "Mana analysis", "detail": mana_report})
+
+        sequence_report = analyze_sequences(question, card_names_for_tools)
+        if sequence_report:
+            tools_context_parts.append(sequence_report)
+            thinking.append({"label": "Sequencer", "detail": sequence_report})
+
         if external_card_sections:
             payload["external_cards_context"] = "\n\n".join(external_card_sections)
+        rule_engine_used = False
         if state_context:
             payload["state_context"] = state_context
             # Derive deterministic rule outputs for top suspected card and include as tools_context
             try:
-                tools_context_parts = []
                 top_card_name = None
                 if resolved_list and resolved_list[0].name:
                     top_card_name = resolved_list[0].name
@@ -338,20 +377,23 @@ Question: {question}
                             from ..services.rule_engine import rule_engine
                             castable = rule_engine.is_castable(state_context or {}, player_id, top_card_name)
                             tools_context_parts.append(f"Rule:is_castable {top_card_name} => {castable}")
+                            rule_engine_used = True
                         except Exception:
                             pass
                     try:
                         from ..services.rule_engine import rule_engine
                         validate = rule_engine.validate_targets(state_context or {}, {"card_name": top_card_name, "targets": []})
                         tools_context_parts.append(f"Rule:validate_targets {top_card_name} => {validate}")
+                        rule_engine_used = True
                     except Exception:
                         pass
 
-                if tools_context_parts:
-                    payload["tools_context"] = "\n".join(tools_context_parts)
-                    thinking.append({"label": "Rule engine", "detail": "Added deterministic rule engine checks to context"})
             except Exception:
                 pass
+        if rule_engine_used:
+            thinking.append({"label": "Rule engine", "detail": "Added deterministic rule engine checks to context"})
+        if tools_context_parts:
+            payload["tools_context"] = "\n".join(tools_context_parts)
         
         # Add player guidance based on profile
         player_guidance = self._build_player_guidance(user)
@@ -362,12 +404,12 @@ Question: {question}
         if player_guidance:
             thinking.append({"label": "Player profile", "detail": player_guidance})
 
-        rules_docs = self.rules_retriever.get_relevant_documents(question)
-        cards_docs = self.cards_retriever.get_relevant_documents(question)
-        rulings_docs = self.rulings_retriever.get_relevant_documents(question)
+        rules_docs = self._retrieve_documents(self.rules_db, question)
+        cards_docs = self._retrieve_documents(self.cards_db, question)
+        rulings_docs = self._retrieve_documents(self.rulings_db, question)
         reference_docs: List = []
-        if self.reference_retriever:
-            reference_docs = self.reference_retriever.get_relevant_documents(question)
+        if self.reference_db:
+            reference_docs = self._retrieve_documents(self.reference_db, question, include_scores=False)
 
         payload["rules_context"] = rules_docs
         payload["cards_context"] = cards_docs
@@ -479,6 +521,17 @@ Question: {question}
         merged["player_guidance"] = payload.get("player_guidance", "")
         return merged
 
+    def _retrieve_documents(self, store: Chroma, question: str, include_scores: bool = True) -> List:
+        try:
+            if include_scores:
+                results = store.similarity_search_with_relevance_scores(question, k=self.retrieval_k)
+                docs = [doc for doc, score in results if score is None or score >= self.retrieval_threshold]
+            else:
+                docs = store.similarity_search(question, k=self.retrieval_k)
+            return docs
+        except Exception:
+            return []
+
     def _rule_ids_from_docs(self, docs: List) -> List[str]:
         if not docs:
             return []
@@ -502,6 +555,27 @@ Question: {question}
             citation_lines = "\n".join(f"- {item}" for item in citations)
             blocks.append(f"Sources:\n{citation_lines}")
         return "\n\n".join(block for block in blocks if block)
+
+    def _parse_commander_identity(self, question: str) -> List[str]:
+        colors = {
+            "white": "White",
+            "blue": "Blue",
+            "black": "Black",
+            "red": "Red",
+            "green": "Green",
+        }
+        detected: List[str] = []
+        lowered = question.lower()
+        for word, label in colors.items():
+            if word in lowered and label not in detected:
+                detected.append(label)
+        return detected
+
+    def _requires_commander_colors(self, oracle_text: str) -> bool:
+        if not oracle_text:
+            return False
+        lowered = oracle_text.lower()
+        return "commander's color identity" in lowered
 
 
 _melvin_service: MelvinService | None = None
