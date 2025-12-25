@@ -1,8 +1,12 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, List, Tuple, Dict
+import os
 import re
 
 import threading
+
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+os.environ.setdefault("CHROMA_TELEMETRY_ENABLED", "False")
 
 from .data_loader import datastore, CardEntry
 from ..core.config import get_settings

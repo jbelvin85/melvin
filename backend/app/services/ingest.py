@@ -4,9 +4,13 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Iterable
+import os
 from collections import defaultdict
 
 from ..core.config import get_settings
+
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+os.environ.setdefault("CHROMA_TELEMETRY_ENABLED", "False")
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import SentenceTransformerEmbeddings
